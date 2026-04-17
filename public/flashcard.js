@@ -75,7 +75,7 @@ function mountFlashcards(container, allCards) {
       </div>
 
       <div class="fc-options">
-        <label class="fc-opt-label">Translation
+        <label class="fc-opt-label" id="fc-translation-option">Translation
           <select id="fc-translation-pos">
             <option value="front" selected>On front</option>
             <option value="back">On back</option>
@@ -84,6 +84,9 @@ function mountFlashcards(container, allCards) {
         </label>
         <label class="fc-opt-label fc-opt-reverse">
           <input type="checkbox" id="fc-reverse"> Reverse
+        </label>
+        <label class="fc-opt-label fc-opt-reverse" id="fc-meaning-reverse-option">
+          <input type="checkbox" id="fc-meaning-reverse"> Reverse meaning
         </label>
       </div>
 
@@ -112,14 +115,23 @@ function mountFlashcards(container, allCards) {
   const statErrors  = container.querySelector('#fc-errors');
   const statRemain  = container.querySelector('#fc-remain');
   const translationSelect = container.querySelector('#fc-translation-pos');
-  const translationOpts   = container.querySelector('.fc-options');
+  const translationOption = container.querySelector('#fc-translation-option');
+  const reverseOption     = container.querySelector('.fc-opt-reverse');
+  const meaningReverseOption = container.querySelector('#fc-meaning-reverse-option');
   const reverseCheck      = container.querySelector('#fc-reverse');
+  const meaningReverseCheck = container.querySelector('#fc-meaning-reverse');
 
   const isConjDeck = allCards.some(c => c.tense);
-  if (!isConjDeck) translationOpts.style.display = 'none';
+  if (isConjDeck) {
+    meaningReverseOption.style.display = 'none';
+  } else {
+    translationOption.style.display = 'none';
+    reverseOption.style.display = 'none';
+  }
 
   translationSelect.addEventListener('change', showCard);
   reverseCheck.addEventListener('change', showCard);
+  meaningReverseCheck.addEventListener('change', showCard);
 
   function updateStats() {
     statCorrect.textContent = `Correct: ${correct}`;
@@ -136,6 +148,7 @@ function mountFlashcards(container, allCards) {
     const c = deck[idx];
     const transPos = translationSelect.value;
     const reversed = reverseCheck.checked;
+    const meaningReversed = meaningReverseCheck.checked;
 
     let questionHTML, answerHTML, reverseQuestionHTML, reverseAnswerHTML;
 
@@ -169,11 +182,17 @@ function mountFlashcards(container, allCards) {
         <span class="fc-hint">tap to flip</span>
       `;
       answerHTML = `<span class="fc-back-form">${c.back}</span>`;
-      reverseQuestionHTML = questionHTML;
-      reverseAnswerHTML = answerHTML;
+      reverseQuestionHTML = `
+        <span class="fc-pronoun" style="font-size:1.6rem">${c.back}</span>
+        <span class="fc-hint">tap to flip</span>
+      `;
+      reverseAnswerHTML = `<span class="fc-back-form">${c.pronoun}</span>`;
     }
 
-    if (reversed) {
+    if (c.tense && reversed) {
+      front.innerHTML = reverseQuestionHTML;
+      back.innerHTML  = reverseAnswerHTML;
+    } else if (!c.tense && meaningReversed) {
       front.innerHTML = reverseQuestionHTML;
       back.innerHTML  = reverseAnswerHTML;
     } else {
