@@ -1,0 +1,18 @@
+services:
+  verbmaster:
+    build: .
+    restart: unless-stopped
+    volumes:
+      - ./verbmaster.db:/app/verbmaster.db
+      - /var/www/mp3:/app/mp3s:ro
+    environment:
+      PORT: 3000
+      MP3_PATH: /app/mp3s
+    expose:
+      - "3000"
+    networks:
+      - web
+
+networks:
+  web:
+    external: false
