@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verb — Verbmaster</title>
+  <link rel="icon" href="/verbmaster.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#1b61c9">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Verbmaster">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<script src="/nav.js" data-back="/" data-back-label="← All verbs"></script>
+
+<main>
+  <div id="verb-header"></div>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="flashcards">Flashcards</button>
+    <button class="tab-btn" data-tab="audio">Audio</button>
+    <button class="tab-btn" data-tab="tenses">Tenses</button>
+    <button class="tab-btn" data-tab="game">Practice</button>
+    <button class="tab-btn" data-tab="conversations">Conversations</button>
+  </div>
+
+  <div id="tab-tenses" class="tab-panel hidden">
+    <table id="conj-table">
+      <thead>
+        <tr>
+          <th>Pronoun</th>
+          <th>Present</th>
+          <th>Preterite</th>
+          <th>Imperfect</th>
+          <th>Conditional</th>
+          <th>Future</th>
+        </tr>
+      </thead>
+      <tbody id="conj-body"></tbody>
+    </table>
+  </div>
+
+  <div id="tab-flashcards" class="tab-panel">
+    <div id="flashcard-root"></div>
+  </div>
+
+  <div id="tab-audio" class="tab-panel hidden">
+    <div id="audio-mount"></div>
+  </div>
+
+  <div id="tab-game" class="tab-panel hidden">
+    <div id="game-root"></div>
+  </div>
+
+  <div id="tab-conversations" class="tab-panel hidden">
+    <div id="conv-root"></div>
+  </div>
+</main>
+
+<script src="/offline-data.js"></script>
+<script src="/flashcard.js"></script>
+<script src="/audio-deck.js"></script>
+<script src="/conjugation-game.js"></script>
+<script>
+  const params = new URLSearchParams(location.search);
+  const infinitive = params.get('v');
+  if (!infinitive) location.href = '/';
+
+  const TENSES   = ['present', 'preterite', 'imperfect', 'conditional', 'future'];
+  const PRONOUNS = ['yo', 'tú', 'él/ella/Ud.', 'nosotros', 'vosotros', 'ellos/Uds.'];
+
+  let verbData = null;
+  let sentencesLoaded = false;
+  let audioLoaded = false;
+  let convsLoaded = false;
+
+  async function init() {
+    verbData = await fetchJsonWithOffline(
+      `/api/verbs/${encodeURIComponent(infinitive)}`,
+      data => offlineVerb(data, infinitive)
+    );
+    if (!verbData) { document.getElementById('verb-header').textContent = 'Verb not found.'; return; }
+
+    document.title = `${verbData.infinitive} — Verbmaster`;
+    document.getElementById('verb-header').innerHTML = `
+      <div class="section-label">Spanish verb</div>
+      <h2>${verbData.infinitive}<span class="meaning">${verbData.meaning}</span></h2>
+    `;
+
+    // Conjugation table
+    const map = {};
+    for (const c of verbData.conjugations) {
+      if (!map[c.pronoun]) map[c.pronoun] = {};
+      map[c.pronoun][c.tense] = c.form;
+    }
+    const tbody = document.getElementById('conj-body');
+    for (const pronoun of PRONOUNS) {
+      const row = document.createElement('tr');
+      row.innerHTML = `<td class="pronoun-cell">${pronoun}</td>` +
+        TENSES.map(t => `<td>${(map[pronoun] && map[pronoun][t]) || '—'}</td>`).join('');
+      tbody.appendChild(row);
+    }
+
+    const enriched = verbData.conjugations.map(c => ({
+      ...c, infinitive: verbData.infinitive, meaning: verbData.meaning
+    }));
+    const ALL_TENSES = ['present','preterite','future','imperfect','conditional'];
+
+    const fcRoot = document.getElementById('flashcard-root');
+    fcRoot.innerHTML = `
+      <div class="fc-modes">
+        <button class="fc-mode-btn active" data-mode="vocab">Meaning</button>
+        <button class="fc-mode-btn" data-mode="present">Present</button>
+        <button class="fc-mode-btn" data-mode="preterite">Preterite</button>
+        <button class="fc-mode-btn" data-mode="future">Future</button>
+        <button class="fc-mode-btn" data-mode="imperfect">Imperfect</button>
+        <button class="fc-mode-btn" data-mode="conditional">Conditional</button>
+        <button class="fc-mode-btn" data-mode="all">All tenses</button>
+      </div>
+      <div id="vfc-mount"></div>
+    `;
+
+    function mountVerbFC(mode) {
+      const mount = document.getElementById('vfc-mount');
+      if (mode === 'vocab') {
+        mountFlashcards(mount, buildVerbCards([verbData]));
+      } else {
+        const tenses = mode === 'all' ? ALL_TENSES : [mode];
+        const cards = buildConjCards(enriched.filter(c => tenses.includes(c.tense)));
+        mountFlashcards(mount, cards);
+      }
+    }
+
+    fcRoot.querySelectorAll('.fc-mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        fcRoot.querySelectorAll('.fc-mode-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        mountVerbFC(btn.dataset.mode);
+      });
+    });
+
+    mountVerbFC('vocab');
+    if (document.querySelector('[data-tab="audio"]')?.classList.contains('active')) {
+      loadAudioDeck();
+    }
+  }
+
+  async function loadGame() {
+    if (sentencesLoaded) return;
+    sentencesLoaded = true;
+    const res = await fetch(`/api/sentences?verb_id=${verbData.id}`);
+    const sentences = await res.json();
+    mountConjugationGame(document.getElementById('game-root'), sentences);
+  }
+
+  async function loadAudioDeck() {
+    if (audioLoaded) return;
+    const mount = document.getElementById('audio-mount');
+    if (!verbData) {
+      mount.innerHTML = '<p style="color:var(--weak);font-size:14px">Loading audio...</p>';
+      return;
+    }
+    mount.innerHTML = '<p style="color:var(--weak);font-size:14px">Loading audio...</p>';
+    const res = await fetch(`/api/sentences?verb_id=${verbData.id}&limit=200`);
+    const sentences = await res.json();
+    audioLoaded = true;
+    mountAudioDeck(mount, sentences);
+  }
+
+  async function loadConversations() {
+    if (convsLoaded) return;
+    convsLoaded = true;
+    const res = await fetch(`/api/conversations/${encodeURIComponent(infinitive)}`);
+    const data = await res.json();
+    renderConversations(data);
+  }
+
+  function renderConversations({ informal, formal }) {
+    const root = document.getElementById('conv-root');
+    if (!informal.length && !formal.length) {
+      root.innerHTML = '<p style="color:var(--weak);font-size:14px">No conversations available.</p>';
+      return;
+    }
+
+    function dialogueHTML(lines) {
+      if (!lines.length) return '<p style="color:var(--weak);font-size:14px">None available.</p>';
+      return lines.map((l, i) => `
+        <div class="conv-line conv-speaker-${(i % 2) + 1}">
+          <span class="conv-speaker">${l.speaker || ''}:</span>
+          <span class="conv-phrase">${l.phrase_es}</span>
+          <button class="conv-reveal" data-idx="${i}" data-register="${l.register}">?</button>
+          <div class="conv-translation hidden" id="ct-${l.register}-${i}">${l.phrase_en}</div>
+        </div>
+      `).join('');
+    }
+
+    root.innerHTML = `
+      <div class="tabs" style="margin-bottom:20px">
+        <button class="tab-btn active" data-conv="informal">Informal</button>
+        <button class="tab-btn" data-conv="formal">Formal</button>
+      </div>
+      <div id="conv-informal">${dialogueHTML(informal)}</div>
+      <div id="conv-formal" class="hidden">${dialogueHTML(formal)}</div>
+    `;
+
+    root.querySelectorAll('[data-conv]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        root.querySelectorAll('[data-conv]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        root.querySelector('#conv-informal').classList.toggle('hidden', btn.dataset.conv !== 'informal');
+        root.querySelector('#conv-formal').classList.toggle('hidden', btn.dataset.conv !== 'formal');
+      });
+    });
+
+    root.querySelectorAll('.conv-reveal').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const el = root.querySelector(`#ct-${btn.dataset.register}-${btn.dataset.idx}`);
+        if (el) el.classList.toggle('hidden');
+      });
+    });
+  }
+
+  // Tab switching with lazy load
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+      btn.classList.add('active');
+      document.getElementById(`tab-${btn.dataset.tab}`).classList.remove('hidden');
+      if (btn.dataset.tab === 'audio') loadAudioDeck();
+      if (btn.dataset.tab === 'game') loadGame();
+      if (btn.dataset.tab === 'conversations') loadConversations();
+    });
+  });
+
+  init();
+</script>
+</body>
+</html>

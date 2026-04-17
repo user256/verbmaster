@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Practicar — Verbmaster</title>
+  <link rel="icon" href="/verbmaster.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#1b61c9">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Verbmaster">
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .practicar-layout {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 32px;
+      align-items: start;
+    }
+    .sidebar {
+      position: sticky;
+      top: 72px;
+    }
+    .sidebar-heading {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--weak);
+      letter-spacing: 0.28px;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+    .sidebar-group { margin-bottom: 20px; }
+    .sidebar-group-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--weak);
+      letter-spacing: 0.22px;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+      padding-left: 8px;
+    }
+    .sidebar-link {
+      display: block;
+      padding: 6px 8px;
+      font-size: 14px;
+      font-weight: 400;
+      color: var(--navy);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.12s, color 0.12s;
+      line-height: 1.35;
+    }
+    .sidebar-link:hover { background: var(--light); text-decoration: none; color: var(--navy); }
+    .sidebar-link.active { background: var(--blue); color: var(--white); font-weight: 500; }
+
+    .set-content { min-height: 400px; }
+
+    @media (max-width: 700px) {
+      .practicar-layout { grid-template-columns: 1fr; }
+      .sidebar { position: static; }
+    }
+  </style>
+</head>
+<body>
+
+<script src="/nav.js" data-back="/" data-back-label="← All verbs"></script>
+
+<main style="max-width:1100px">
+  <div class="practicar-layout">
+
+    <aside class="sidebar" id="sidebar"></aside>
+
+    <section class="set-content" id="set-content">
+      <p style="color:var(--weak); font-size:14px;">Select a practice set.</p>
+    </section>
+
+  </div>
+</main>
+
+<script src="/sets.js"></script>
+<script src="/flashcard.js"></script>
+<script src="/conjugation-game.js"></script>
+<script>
+  // ── Build sidebar ──────────────────────────────────────────────
+  const sidebar = document.getElementById('sidebar');
+  const groups = [...new Set(PRACTICE_SETS.map(s => s.group))];
+
+  sidebar.innerHTML = `<div class="sidebar-heading">Practicar</div>` +
+    groups.map(g => `
+      <div class="sidebar-group">
+        <div class="sidebar-group-label">${g}</div>
+        ${PRACTICE_SETS.filter(s => s.group === g).map(s =>
+          `<a class="sidebar-link" data-slug="${s.slug}">${s.title}</a>`
+        ).join('')}
+      </div>
+    `).join('');
+
+  sidebar.querySelectorAll('.sidebar-link').forEach(el => {
+    el.addEventListener('click', () => loadSet(el.dataset.slug));
+  });
+
+  // ── Set loader ─────────────────────────────────────────────────
+  let currentSlug = null;
+
+  async function loadSet(slug) {
+    if (slug === currentSlug) return;
+    currentSlug = slug;
+
+    // highlight sidebar
+    sidebar.querySelectorAll('.sidebar-link').forEach(el => {
+      el.classList.toggle('active', el.dataset.slug === slug);
+    });
+
+    const set = PRACTICE_SETS.find(s => s.slug === slug);
+    if (!set) return;
+
+    document.title = `${set.title} — Verbmaster`;
+
+    const content = document.getElementById('set-content');
+    content.innerHTML = `
+      <div class="section-label">${set.group}</div>
+      <h1 class="section-title" style="margin-bottom:24px">${set.title}</h1>
+      <div class="tabs" id="set-tabs">
+        <button class="tab-btn active" data-tab="verbs">Verbs</button>
+        <button class="tab-btn" data-tab="flashcards">Flashcards</button>
+        <button class="tab-btn" data-tab="game">Practice</button>
+      </div>
+      <div id="tab-verbs" class="tab-panel">
+        <div class="verb-grid" id="verb-grid"><p style="color:var(--weak);font-size:14px">Loading…</p></div>
+      </div>
+      <div id="tab-flashcards" class="tab-panel hidden">
+        <div class="fc-modes" id="fc-modes">
+          <button class="fc-mode-btn active" data-mode="vocab">Meaning</button>
+          <button class="fc-mode-btn" data-mode="present">Present</button>
+          <button class="fc-mode-btn" data-mode="preterite">Preterite</button>
+          <button class="fc-mode-btn" data-mode="future">Future</button>
+          <button class="fc-mode-btn" data-mode="imperfect">Imperfect</button>
+          <button class="fc-mode-btn" data-mode="conditional">Conditional</button>
+          <button class="fc-mode-btn" data-mode="all">All tenses</button>
+        </div>
+        <div id="fc-range"></div>
+        <div id="fc-mount"></div>
+      </div>
+      <div id="tab-game" class="tab-panel hidden">
+        <div id="game-mount"></div>
+      </div>
+    `;
+
+    // tab switching
+    content.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        content.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        content.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+        btn.classList.add('active');
+        content.querySelector(`#tab-${btn.dataset.tab}`).classList.remove('hidden');
+        if (btn.dataset.tab === 'flashcards') {
+          if (set.max_importance) renderRangeControls(set);
+          else if (set.verbs) renderLimitControl(set);
+          loadFlashcards(set, 'vocab');
+        }
+        if (btn.dataset.tab === 'game') loadGame(set);
+      });
+    });
+
+    // mode buttons
+    content.querySelectorAll('.fc-mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        content.querySelectorAll('.fc-mode-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        loadFlashcards(set, btn.dataset.mode);
+      });
+    });
+
+
+    // load verb list
+    await loadVerbList(set);
+  }
+
+  async function loadVerbList(set) {
+    const grid = document.getElementById('verb-grid');
+    let verbs;
+    if (set.verbs) {
+      const res = await fetch(`/api/verbs-list?verbs=${encodeURIComponent(set.verbs)}`);
+      verbs = await res.json();
+    } else {
+      const res = await fetch(`/api/verbs?max_importance=${set.max_importance}&limit=500`);
+      verbs = await res.json();
+    }
+
+    if (!verbs.length) { grid.innerHTML = '<p style="color:var(--weak);font-size:14px">No verbs found.</p>'; return; }
+
+    grid.innerHTML = verbs.map(v => `
+      <div class="verb-grid-item">
+        <a href="/verb.html?v=${encodeURIComponent(v.infinitive)}">${v.infinitive}</a>
+        <span>${v.meaning}</span>
+      </div>
+    `).join('');
+  }
+
+  async function loadGame(set) {
+    const mount = document.getElementById('game-mount');
+    if (!mount || mount.dataset.loaded) return;
+    mount.dataset.loaded = '1';
+    let url;
+    if (set.verbs) {
+      url = `/api/sentences?verbs=${encodeURIComponent(set.verbs)}&limit=200`;
+    } else {
+      url = `/api/sentences?max_importance=${set.max_importance}&limit=200`;
+    }
+    const res = await fetch(url);
+    const sentences = await res.json();
+    mountConjugationGame(mount, sentences);
+  }
+
+  const ALL_TENSES = 'present,preterite,future,imperfect,conditional';
+
+  function getRangeParams() {
+    const fromSel  = document.getElementById('fc-range-from');
+    const toSel    = document.getElementById('fc-range-to');
+    const limitSel = document.getElementById('fc-range-limit');
+    if (fromSel && toSel) {
+      return { min: parseInt(fromSel.value), max: parseInt(toSel.value) };
+    }
+    if (limitSel) {
+      return { limit: parseInt(limitSel.value) };
+    }
+    return {};
+  }
+
+  function renderRangeControls(set) {
+    const el = document.getElementById('fc-range');
+    if (!el) return;
+    const n = set.max_importance;
+    const step = n <= 50 ? 10 : n <= 200 ? 25 : 50;
+    const opts = [];
+    for (let i = 1; i <= n; i += step) opts.push(i);
+    if (!opts.includes(n)) opts.push(n);
+
+    const makeOpts = (vals, sel) => vals.map(v =>
+      `<option value="${v}"${v === sel ? ' selected' : ''}>${v}</option>`
+    ).join('');
+
+    el.innerHTML = `
+      <div class="fc-range-row">
+        <label class="fc-opt-label">From rank
+          <select id="fc-range-from">${makeOpts(opts, opts[0])}</select>
+        </label>
+        <label class="fc-opt-label">To rank
+          <select id="fc-range-to">${makeOpts(opts, n)}</select>
+        </label>
+      </div>
+    `;
+
+    el.querySelectorAll('select').forEach(s => s.addEventListener('change', () => {
+      const from = parseInt(document.getElementById('fc-range-from').value);
+      const to   = parseInt(document.getElementById('fc-range-to').value);
+      if (from > to) {
+        if (s.id === 'fc-range-from') document.getElementById('fc-range-to').value = from;
+        else document.getElementById('fc-range-from').value = to;
+      }
+      const activeMode = document.querySelector('.fc-mode-btn.active')?.dataset.mode || 'vocab';
+      loadFlashcards(set, activeMode);
+    }));
+  }
+
+  function renderLimitControl(set) {
+    const el = document.getElementById('fc-range');
+    if (!el) return;
+    const verbCount = set.verbs.split(',').length;
+    const opts = [5, 10, 20, verbCount].filter((v, i, a) => v <= verbCount && a.indexOf(v) === i).sort((a,b)=>a-b);
+    el.innerHTML = `
+      <div class="fc-range-row">
+        <label class="fc-opt-label">Show
+          <select id="fc-range-limit">
+            ${opts.map(v => `<option value="${v}"${v === verbCount ? ' selected' : ''}>${v === verbCount ? 'All' : v} verbs</option>`).join('')}
+          </select>
+        </label>
+      </div>
+    `;
+    document.getElementById('fc-range-limit').addEventListener('change', () => {
+      const activeMode = document.querySelector('.fc-mode-btn.active')?.dataset.mode || 'vocab';
+      loadFlashcards(set, activeMode);
+    });
+  }
+
+  async function loadFlashcards(set, mode) {
+    const mount = document.getElementById('fc-mount');
+    if (!mount) return;
+    const range = getRangeParams();
+
+    if (mode === 'vocab') {
+      let verbs;
+      if (set.verbs) {
+        const res = await fetch(`/api/verbs-list?verbs=${encodeURIComponent(set.verbs)}`);
+        verbs = await res.json();
+        if (range.limit) verbs = verbs.slice(0, range.limit);
+      } else {
+        const minParam = range.min && range.min > 1 ? `&min_importance=${range.min}` : '';
+        const maxParam = range.max || set.max_importance;
+        const res = await fetch(`/api/verbs?max_importance=${maxParam}${minParam}&limit=500`);
+        verbs = await res.json();
+      }
+      mountFlashcards(mount, buildVerbCards(verbs));
+    } else {
+      const tenses = mode === 'all' ? ALL_TENSES : mode;
+      let url;
+      if (set.verbs) {
+        let verbList = set.verbs;
+        if (range.limit) verbList = set.verbs.split(',').slice(0, range.limit).join(',');
+        url = `/api/conjugations?verbs=${encodeURIComponent(verbList)}&tenses=${tenses}`;
+      } else {
+        const minParam = range.min && range.min > 1 ? `&min_importance=${range.min}` : '';
+        const maxParam = range.max || set.max_importance;
+        url = `/api/conjugations?max_importance=${maxParam}${minParam}&tenses=${tenses}`;
+      }
+      const res = await fetch(url);
+      mountFlashcards(mount, buildConjCards(await res.json()));
+    }
+  }
+
+  // load from URL hash or first set
+  const hashSlug = location.hash.replace('#', '');
+  const initial = PRACTICE_SETS.find(s => s.slug === hashSlug) || PRACTICE_SETS[0];
+  loadSet(initial.slug);
+
+  // update hash on navigation
+  const origLoad = loadSet;
+  window.loadSet = async function(slug) {
+    history.replaceState(null, '', `#${slug}`);
+    return origLoad(slug);
+  };
+</script>
+</body>
+</html>

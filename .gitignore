@@ -1,0 +1,5 @@
+node_modules/
+verbmaster.db
+private.md
+*.log
+.env

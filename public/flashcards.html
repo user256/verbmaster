@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flashcards — Verbmaster</title>
+  <link rel="icon" href="/verbmaster.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#1b61c9">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Verbmaster">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<script src="/nav.js" data-back="/" data-back-label="← All verbs"></script>
+
+<main>
+  <div id="page-label" class="section-label">Conjugation practice</div>
+  <h1 id="page-title" class="section-title">Flashcards</h1>
+
+  <div class="tabs" id="main-tabs">
+    <button class="tab-btn active" data-tab="flashcards">Flashcards</button>
+    <button class="tab-btn" data-tab="audio">Audio</button>
+    <button class="tab-btn" data-tab="practice">Practice</button>
+    <button class="tab-btn" data-tab="conversations">Conversations</button>
+    <button class="tab-btn" data-tab="verbs">Verbs</button>
+  </div>
+
+  <div id="tab-flashcards" class="tab-panel">
+    <div class="fc-modes" id="fc-modes">
+      <button class="fc-mode-btn active" data-mode="vocab">Meaning</button>
+      <button class="fc-mode-btn" data-mode="present">Present</button>
+      <button class="fc-mode-btn" data-mode="preterite">Preterite</button>
+      <button class="fc-mode-btn" data-mode="future">Future</button>
+      <button class="fc-mode-btn" data-mode="imperfect">Imperfect</button>
+      <button class="fc-mode-btn" data-mode="conditional">Conditional</button>
+      <button class="fc-mode-btn" data-mode="all">All tenses</button>
+    </div>
+    <div id="flashcard-root"></div>
+    <div id="fc-range-row" class="fc-range-row" style="display:none">
+      <label class="fc-opt-label">Verbs
+        <input class="fc-range-input" type="number" id="fc-from" min="1" value="1">
+        <span style="color:var(--weak);font-size:13px">to</span>
+        <input class="fc-range-input" type="number" id="fc-to" min="1">
+      </label>
+      <button class="fc-mode-btn fc-range-verbs-btn" id="show-verbs-from-range" type="button">Verbs</button>
+    </div>
+  </div>
+
+  <div id="tab-audio" class="tab-panel hidden">
+    <div id="audio-mount"></div>
+  </div>
+
+  <div id="tab-practice" class="tab-panel hidden">
+    <div id="practice-range-row" class="fc-range-row" style="display:none">
+      <label class="fc-opt-label">Verbs
+        <input class="fc-range-input" type="number" id="practice-from" min="1" value="1">
+        <span style="color:var(--weak);font-size:13px">to</span>
+        <input class="fc-range-input" type="number" id="practice-to" min="1">
+      </label>
+      <button class="fc-mode-btn fc-range-verbs-btn" id="show-verbs-from-practice" type="button">Verbs</button>
+    </div>
+    <div id="practice-mount"></div>
+  </div>
+
+  <div id="tab-conversations" class="tab-panel hidden">
+    <div id="conversations-mount"></div>
+  </div>
+
+  <div id="tab-verbs" class="tab-panel hidden">
+    <div id="excluded-bar" style="display:none" class="excluded-bar">
+      <span id="excluded-count"></span>
+      <button id="restore-all" class="btn-outline" style="font-size:12px;padding:3px 10px">Restore all</button>
+    </div>
+    <div class="verb-grid" id="verb-grid"><p style="color:var(--weak);font-size:14px">Loading…</p></div>
+    <div class="verbs-mobile-return">
+      <div class="verbs-return-label">Return to</div>
+      <div class="verbs-mobile-actions">
+        <button class="fc-mode-btn" type="button" data-jump-tab="flashcards">Flashcards</button>
+        <button class="fc-mode-btn" type="button" data-jump-tab="audio">Audio</button>
+        <button class="fc-mode-btn" type="button" data-jump-tab="practice">Practice</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="/offline-data.js"></script>
+<script src="/flashcard.js"></script>
+<script src="/audio-deck.js"></script>
+<script src="/conjugation-game.js"></script>
+<script>
+  const params = new URLSearchParams(location.search);
+  const verb          = params.get('verb');
+  const maxImportance = params.get('max_importance');
+  const verbsParam    = params.get('verbs');
+  const ALL_TENSES    = 'present,preterite,future,imperfect,conditional';
+
+  if (verb) {
+    document.getElementById('page-label').textContent = 'Conjugation practice';
+    document.getElementById('page-title').textContent = verb;
+  } else if (maxImportance) {
+    document.getElementById('page-label').textContent = 'Practice set';
+    document.getElementById('page-title').textContent = `Verbs 1–${maxImportance}`;
+  } else if (verbsParam) {
+    document.getElementById('page-label').textContent = 'Custom selection';
+    const verbList = verbsParam.split(',');
+    document.getElementById('page-title').textContent = `${verbList.length} selected verb${verbList.length > 1 ? 's' : ''}`;
+  }
+
+  function updateTitle() {
+    if (!maxImportance) return;
+    const f = parseInt(document.getElementById('fc-from')?.value) || 1;
+    const t = parseInt(document.getElementById('fc-to')?.value)   || parseInt(maxImportance);
+    document.getElementById('page-title').textContent = f === 1 ? `Verbs 1–${t}` : `Verbs ${f}–${t}`;
+  }
+
+  function getActiveFlashcardMode() {
+    return document.querySelector('#fc-modes .fc-mode-btn.active')?.dataset.mode || 'vocab';
+  }
+
+  function syncRangeValues(sourcePrefix) {
+    const from = document.getElementById(`${sourcePrefix}-from`);
+    const to = document.getElementById(`${sourcePrefix}-to`);
+    if (!from || !to) return;
+    ['fc', 'practice'].forEach(prefix => {
+      if (prefix === sourcePrefix) return;
+      const targetFrom = document.getElementById(`${prefix}-from`);
+      const targetTo = document.getElementById(`${prefix}-to`);
+      if (targetFrom) targetFrom.value = from.value;
+      if (targetTo) targetTo.value = to.value;
+    });
+  }
+
+  function handleRangeChange(sourcePrefix) {
+    if (!maxImportance) return;
+    const fromEl = document.getElementById(`${sourcePrefix}-from`);
+    const toEl = document.getElementById(`${sourcePrefix}-to`);
+    const f = Math.max(1, parseInt(fromEl.value) || 1);
+    const t = Math.min(parseInt(maxImportance), Math.max(f, parseInt(toEl.value) || parseInt(maxImportance)));
+    fromEl.value = f;
+    toEl.value = t;
+    syncRangeValues(sourcePrefix);
+    updateTitle();
+    clearLoadedTabs();
+    if (!document.getElementById('tab-flashcards').classList.contains('hidden')) {
+      loadMode(getActiveFlashcardMode());
+    }
+    if (!document.getElementById('tab-practice').classList.contains('hidden')) {
+      loadPracticeDeck();
+    }
+    if (verbGridLoaded) loadVerbGrid();
+  }
+
+  let verbId = null;
+  let verbGridLoaded = false;
+  let practiceLoadedKey = null;
+  let conversationsLoadedKey = null;
+  const excluded = new Set();
+
+  async function init() {
+    if (verbsParam) {
+      // custom selection from homepage — hide verbs tab, no range controls
+      document.querySelector('[data-tab="verbs"]').style.display = 'none';
+      loadMode('vocab');
+      return;
+    }
+    if (verb) {
+      const v = await fetchJsonWithOffline(
+        `/api/verbs/${encodeURIComponent(verb)}`,
+        data => offlineVerb(data, verb)
+      );
+      if (!v) { document.getElementById('flashcard-root').textContent = 'Verb not found.'; return; }
+      verbId = v.id;
+      document.querySelector('[data-tab="verbs"]').style.display = 'none';
+    } else if (maxImportance) {
+      const rangeInputs = [
+        document.getElementById('fc-from'),
+        document.getElementById('fc-to'),
+        document.getElementById('practice-from'),
+        document.getElementById('practice-to')
+      ];
+      document.getElementById('fc-to').value = maxImportance;
+      document.getElementById('practice-to').value = maxImportance;
+      rangeInputs.forEach(input => { input.max = maxImportance; });
+      document.getElementById('fc-range-row').style.display = 'flex';
+      document.getElementById('practice-range-row').style.display = 'flex';
+
+      let rangeDebounce;
+      rangeInputs.forEach(el => el.addEventListener('input', () => {
+        clearTimeout(rangeDebounce);
+        rangeDebounce = setTimeout(() => handleRangeChange(el.id.startsWith('practice-') ? 'practice' : 'fc'), 600);
+      }));
+    }
+    loadMode('vocab');
+  }
+
+  function updateExcludedBar() {
+    const bar = document.getElementById('excluded-bar');
+    const count = document.getElementById('excluded-count');
+    if (excluded.size === 0) {
+      bar.style.display = 'none';
+    } else {
+      bar.style.display = 'flex';
+      count.textContent = `${excluded.size} verb${excluded.size > 1 ? 's' : ''} excluded from deck`;
+    }
+  }
+
+  async function loadVerbGrid() {
+    verbGridLoaded = true;
+    const range = getRangeParams();
+    const minParam = range.min ? `&min_importance=${range.min}` : '';
+    const verbs = await fetchJsonWithOffline(
+      `/api/verbs?max_importance=${range.max}${minParam}&limit=500`,
+      data => offlineVerbs(data, {
+        maxImportance: parseInt(range.max),
+        minImportance: range.min ? parseInt(range.min) : null,
+        limit: 500
+      })
+    );
+    renderVerbGrid(verbs);
+  }
+
+  function renderVerbGrid(verbs) {
+    const grid = document.getElementById('verb-grid');
+    grid.innerHTML = verbs.map(v => `
+      <div class="verb-grid-item ${excluded.has(v.infinitive) ? 'verb-excluded' : ''}" data-infinitive="${v.infinitive}">
+        <a href="/verb.html?v=${encodeURIComponent(v.infinitive)}">${v.infinitive}</a>
+        <span>${v.meaning}</span>
+        <button class="verb-exclude-btn" title="Remove from deck">✕</button>
+      </div>
+    `).join('');
+
+    grid.querySelectorAll('.verb-exclude-btn').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.preventDefault();
+        const item = btn.closest('.verb-grid-item');
+        const inf  = item.dataset.infinitive;
+        if (excluded.has(inf)) {
+          excluded.delete(inf);
+          item.classList.remove('verb-excluded');
+        } else {
+          excluded.add(inf);
+          item.classList.add('verb-excluded');
+        }
+        updateExcludedBar();
+        clearLoadedTabs();
+        // reload deck if flashcards tab active
+        if (!document.getElementById('tab-flashcards').classList.contains('hidden')) {
+          loadMode(getActiveFlashcardMode());
+        }
+        if (!document.getElementById('tab-practice').classList.contains('hidden')) {
+          loadPracticeDeck();
+        }
+      });
+    });
+  }
+
+  function activateTab(name) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+    document.getElementById(`tab-${name}`).classList.remove('hidden');
+    if (name === 'verbs') loadVerbGrid();
+    if (name === 'audio') loadAudioDeck();
+    if (name === 'practice') loadPracticeDeck();
+    if (name === 'conversations') loadConversationsDeck();
+    if (name === 'flashcards') loadMode(getActiveFlashcardMode());
+  }
+
+  document.getElementById('show-verbs-from-range')?.addEventListener('click', () => {
+    activateTab('verbs');
+  });
+  document.getElementById('show-verbs-from-practice')?.addEventListener('click', () => {
+    activateTab('verbs');
+  });
+  document.querySelectorAll('[data-jump-tab]').forEach(btn => {
+    btn.addEventListener('click', () => activateTab(btn.dataset.jumpTab));
+  });
+
+  document.getElementById('restore-all')?.addEventListener('click', () => {
+    excluded.clear();
+    document.querySelectorAll('.verb-grid-item.verb-excluded').forEach(el => el.classList.remove('verb-excluded'));
+    updateExcludedBar();
+    clearLoadedTabs();
+    if (!document.getElementById('tab-flashcards').classList.contains('hidden')) {
+      loadMode(getActiveFlashcardMode());
+    }
+  });
+
+  function clearLoadedTabs() {
+    const audioMount = document.getElementById('audio-mount');
+    if (audioMount) {
+      audioMount.dataset.loadedKey = '';
+      audioMount.innerHTML = '';
+    }
+    practiceLoadedKey = null;
+    conversationsLoadedKey = null;
+    document.getElementById('practice-mount').innerHTML = '';
+    document.getElementById('conversations-mount').innerHTML = '';
+  }
+
+  function getRangeParams() {
+    const fromEl = document.getElementById('fc-from');
+    const toEl   = document.getElementById('fc-to');
+    if (!fromEl || !toEl) return { max: maxImportance };
+    const f = parseInt(fromEl.value) || 1;
+    const t = parseInt(toEl.value)   || parseInt(maxImportance);
+    return { min: f > 1 ? f : null, max: t };
+  }
+
+  async function loadMode(mode) {
+    const mount = document.getElementById('flashcard-root');
+    const range = getRangeParams();
+
+    if (mode === 'vocab') {
+      let verbs;
+      if (verbsParam) {
+        verbs = await fetchJsonWithOffline(
+          `/api/verbs-list?verbs=${encodeURIComponent(verbsParam)}`,
+          data => offlineVerbsList(data, verbsParam)
+        );
+      } else if (verb) {
+        const row = await fetchJsonWithOffline(
+          `/api/verbs/${encodeURIComponent(verb)}`,
+          data => offlineVerb(data, verb)
+        );
+        verbs = row ? [row] : [];
+      } else {
+        const minParam = range.min ? `&min_importance=${range.min}` : '';
+        verbs = await fetchJsonWithOffline(
+          `/api/verbs?max_importance=${range.max}${minParam}&limit=500`,
+          data => offlineVerbs(data, {
+            maxImportance: parseInt(range.max),
+            minImportance: range.min ? parseInt(range.min) : null,
+            limit: 500
+          })
+        );
+      }
+      verbs = verbs.filter(v => !excluded.has(v.infinitive));
+      mountFlashcards(mount, buildVerbCards(verbs));
+    } else {
+      const tenses = mode === 'all' ? ALL_TENSES : mode;
+      let url;
+      if (verbsParam) {
+        url = `/api/conjugations?verbs=${encodeURIComponent(verbsParam)}&tenses=${tenses}`;
+      } else if (verb) {
+        url = `/api/conjugations?verb_id=${verbId}&tenses=${tenses}`;
+      } else {
+        const minParam = range.min ? `&min_importance=${range.min}` : '';
+        url = `/api/conjugations?max_importance=${range.max}${minParam}&tenses=${tenses}`;
+      }
+      let rows = await fetchJsonWithOffline(
+        url,
+        data => offlineConjugations(data, {
+          verbId,
+          verbsParam,
+          maxImportance: range.max ? parseInt(range.max) : null,
+          minImportance: range.min ? parseInt(range.min) : null,
+          tensesParam: tenses
+        })
+      );
+      let cards = buildConjCards(rows);
+      cards = cards.filter(c => !excluded.has(c.infinitive));
+      mountFlashcards(mount, cards);
+    }
+  }
+
+  async function loadAudioDeck() {
+    const mount = document.getElementById('audio-mount');
+    const key = getDeckKey();
+    if (!mount || mount.dataset.loadedKey === key) return;
+    mount.dataset.loadedKey = key;
+    const url = getSentencesUrl(200);
+    const res = await fetch(url);
+    const sentences = (await res.json()).filter(s => !excluded.has(s.infinitive));
+    mountAudioDeck(mount, sentences);
+  }
+
+  async function loadPracticeDeck() {
+    const mount = document.getElementById('practice-mount');
+    const key = getDeckKey();
+    if (practiceLoadedKey === key) return;
+    practiceLoadedKey = key;
+    mount.innerHTML = '<p style="color:var(--weak);font-size:14px">Loading practice...</p>';
+    const res = await fetch(getSentencesUrl(500));
+    const sentences = (await res.json()).filter(s => !excluded.has(s.infinitive));
+    mountConjugationGame(mount, sentences);
+  }
+
+  async function loadConversationsDeck() {
+    const mount = document.getElementById('conversations-mount');
+    const key = getDeckKey();
+    if (conversationsLoadedKey === key) return;
+    conversationsLoadedKey = key;
+    mount.innerHTML = '<p style="color:var(--weak);font-size:14px">Loading conversations...</p>';
+    const res = await fetch(getConversationsUrl());
+    renderSetConversations(mount, await res.json());
+  }
+
+  function getDeckKey() {
+    const range = getRangeParams();
+    return JSON.stringify({
+      verb,
+      verbsParam,
+      maxImportance,
+      min: range.min || null,
+      max: range.max || null,
+      excluded: [...excluded].sort()
+    });
+  }
+
+  function getSentencesUrl(limit) {
+    const range = getRangeParams();
+    const minParam = range.min ? `&min_importance=${range.min}` : '';
+    if (verbsParam) return `/api/sentences?verbs=${encodeURIComponent(filteredVerbsParam())}&limit=${limit}`;
+    if (verb) return `/api/sentences?verb_id=${verbId}&limit=${limit}`;
+    return `/api/sentences?max_importance=${range.max}${minParam}&limit=${limit}`;
+  }
+
+  function getConversationsUrl() {
+    const range = getRangeParams();
+    const minParam = range.min ? `&min_importance=${range.min}` : '';
+    if (verbsParam) return `/api/conversations?verbs=${encodeURIComponent(filteredVerbsParam())}`;
+    if (verb) return `/api/conversations?verb_id=${verbId}`;
+    return `/api/conversations?max_importance=${range.max}${minParam}`;
+  }
+
+  function filteredVerbsParam() {
+    return (verbsParam || '')
+      .split(',')
+      .map(v => v.trim())
+      .filter(v => v && !excluded.has(v))
+      .join(',');
+  }
+
+  function renderSetConversations(mount, rows) {
+    if (!rows.length) {
+      mount.innerHTML = '<p style="color:var(--weak);font-size:14px">No conversations available for this set.</p>';
+      return;
+    }
+
+    const grouped = new Map();
+    rows.filter(r => !excluded.has(r.infinitive)).forEach(row => {
+      if (!grouped.has(row.infinitive)) grouped.set(row.infinitive, []);
+      grouped.get(row.infinitive).push(row);
+    });
+
+    mount.innerHTML = [...grouped.entries()].map(([infinitive, lines]) => {
+      const meaning = lines[0]?.meaning || '';
+      return `
+        <section class="conv-set">
+          <h3><a href="/verb.html?v=${encodeURIComponent(infinitive)}">${infinitive}</a>${meaning ? `<span>${meaning}</span>` : ''}</h3>
+          ${['informal', 'formal'].map(register => {
+            const registerLines = lines.filter(l => l.register === register);
+            if (!registerLines.length) return '';
+            return `
+              <div class="conv-register">${register}</div>
+              ${registerLines.map((l, i) => `
+                <div class="conv-line conv-speaker-${(i % 2) + 1}">
+                  <span class="conv-speaker">${l.speaker || ''}:</span>
+                  <span class="conv-phrase">${l.phrase_es}</span>
+                  <div class="conv-translation">${l.phrase_en}</div>
+                </div>
+              `).join('')}
+            `;
+          }).join('')}
+        </section>
+      `;
+    }).join('');
+  }
+
+  // tab switching
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      activateTab(btn.dataset.tab);
+    });
+  });
+
+  document.querySelectorAll('#fc-modes .fc-mode-btn[data-mode]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#fc-modes .fc-mode-btn[data-mode]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      loadMode(btn.dataset.mode);
+    });
+  });
+
+  init();
+</script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+{
+  "name": "verbmasterredux",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node seed.js",
+    "export:offline": "node export-offline-data.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "better-sqlite3": "^12.9.0",
+    "csv-parse": "^6.2.1",
+    "express": "^5.2.1"
+  }
+}

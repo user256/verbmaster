@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phrasemaster — Verbmaster</title>
+  <link rel="icon" href="/verbmaster.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#1b61c9">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Verbmaster">
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .pm-layout {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 32px;
+      align-items: start;
+    }
+    .sidebar { position: sticky; top: 72px; }
+    .sidebar-heading { font-size:13px; font-weight:600; color:var(--weak); letter-spacing:0.28px; text-transform:uppercase; margin-bottom:12px; }
+    .sidebar-link { display:block; padding:6px 8px; font-size:14px; color:var(--navy); border-radius:8px; cursor:pointer; transition:background 0.12s; line-height:1.35; }
+    .sidebar-link:hover { background:var(--light); text-decoration:none; color:var(--navy); }
+    .sidebar-link.active { background:var(--blue); color:var(--white); font-weight:500; }
+
+    /* Phrase flashcard reuses fc-wrap but with phrase-specific back */
+    .pf-phrase { font-size:1.1rem; font-weight:500; color:var(--white); line-height:1.4; }
+    .pf-hint   { font-size:12px; color:rgba(255,255,255,0.5); margin-top:6px; }
+
+    @media (max-width:700px) { .pm-layout { grid-template-columns:1fr; } .sidebar { position:static; } }
+  </style>
+</head>
+<body>
+
+<script src="/nav.js"></script>
+
+<main style="max-width:1100px">
+  <div class="pm-layout">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-heading">Phrasemaster</div>
+      <div id="topic-list"><p style="color:var(--weak);font-size:14px">Loading…</p></div>
+    </aside>
+
+    <section id="pm-content">
+      <p style="color:var(--weak);font-size:14px">Select a topic.</p>
+    </section>
+  </div>
+</main>
+
+<script src="/flashcard.js"></script>
+<script>
+  // ── Load topic list ────────────────────────────────────────────
+  async function loadTopicList() {
+    const res = await fetch('/api/topics');
+    const topics = await res.json();
+    document.getElementById('topic-list').innerHTML = topics.map(t =>
+      `<a class="sidebar-link" data-slug="${t.slug}">${t.title}</a>`
+    ).join('');
+    document.querySelectorAll('.sidebar-link').forEach(el =>
+      el.addEventListener('click', () => loadTopic(el.dataset.slug))
+    );
+    // auto-load from hash
+    const slug = location.hash.replace('#','');
+    if (slug) loadTopic(slug);
+  }
+
+  // ── Phrase flashcard builder ────────────────────────────────────
+  function buildPhraseCards(phrases) {
+    return phrases.map(p => ({
+      infinitive: p.key_verb || '',
+      meaning: '',
+      pronoun: p.phrase_es,
+      tense: '',
+      back: p.phrase_en,
+      audio_hash: p.audio_hash,
+      _isPhrase: true,
+    }));
+  }
+
+  // ── Load topic ─────────────────────────────────────────────────
+  async function loadTopic(slug) {
+    history.replaceState(null, '', `#${slug}`);
+    document.querySelectorAll('.sidebar-link').forEach(el =>
+      el.classList.toggle('active', el.dataset.slug === slug)
+    );
+
+    const res = await fetch(`/api/topics/${encodeURIComponent(slug)}`);
+    if (!res.ok) return;
+    const data = await res.json();
+
+    document.title = `${data.title} — Phrasemaster`;
+    const content = document.getElementById('pm-content');
+    content.innerHTML = `
+      <div class="section-label">Phrasemaster</div>
+      <h1 class="section-title" style="margin-bottom:24px">${data.title}</h1>
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="phrases">Phrases</button>
+        <button class="tab-btn" data-tab="flashcards">Flashcards</button>
+      </div>
+      <div id="tab-phrases" class="tab-panel">
+        <div class="phrase-list" id="phrase-list"></div>
+      </div>
+      <div id="tab-flashcards" class="tab-panel hidden">
+        <div id="pm-fc-mount"></div>
+      </div>
+    `;
+
+    // phrase list
+    const listEl = content.querySelector('#phrase-list');
+    listEl.innerHTML = data.phrases.map(p => `
+      <div class="verb-row">
+        <span class="verb-name" style="min-width:0;flex:1">${p.phrase_es}</span>
+        <span class="verb-meaning">${p.phrase_en}</span>
+        ${p.audio_hash ? `<button class="cg-audio-btn" onclick="playAudio('${p.audio_hash}')">▶</button>` : ''}
+      </div>
+    `).join('');
+
+    // tabs
+    content.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        content.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        content.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+        btn.classList.add('active');
+        content.querySelector(`#tab-${btn.dataset.tab}`).classList.remove('hidden');
+        if (btn.dataset.tab === 'flashcards') {
+          mountPhraseFlashcards(content.querySelector('#pm-fc-mount'), data.phrases);
+        }
+      });
+    });
+  }
+
+  function mountPhraseFlashcards(el, phrases) {
+    const cards = phrases.map(p => ({
+      infinitive: p.phrase_es,
+      meaning: '',
+      pronoun: p.phrase_es,
+      tense: '',
+      back: p.phrase_en,
+      audio_hash: p.audio_hash,
+      _isPhrase: true,
+    }));
+
+    // Custom renderer — override showCard after mount
+    mountFlashcards(el, cards);
+
+    // Patch showCard to render phrase-style front
+    const inner = el.querySelector('.fc-inner');
+    const front = el.querySelector('.fc-front');
+    if (!inner || !front) return;
+
+    // Re-mount with patched rendering
+    const origMount = el.innerHTML;
+    el.innerHTML = '';
+    mountPhraseDeck(el, cards);
+  }
+
+  function mountPhraseDeck(container, cards) {
+    let deck = shuffle([...cards]);
+    let idx = 0, correct = 0, errors = [];
+
+    container.innerHTML = `
+      <div class="fc-wrap">
+        <div class="fc-stats">
+          <span id="pfc-correct">Correct: 0</span>
+          <span id="pfc-errors">Wrong: 0</span>
+          <span id="pfc-remain">Remaining: 0</span>
+        </div>
+        <div class="fc-card" id="pfc-card">
+          <div class="fc-inner">
+            <div class="fc-front" id="pfc-front"></div>
+            <div class="fc-back" id="pfc-back"></div>
+          </div>
+        </div>
+        <div class="fc-buttons">
+          <button class="btn-wrong" id="pfc-wrong">Wrong</button>
+          <button class="btn-right" id="pfc-right">Right</button>
+        </div>
+        <div class="fc-round-end hidden" id="pfc-end">
+          <p id="pfc-msg"></p>
+          <div id="pfc-err-list"></div>
+          <div class="round-actions">
+            <button id="pfc-replay">Play again</button>
+            <button id="pfc-fix" class="hidden">Review errors</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const card    = container.querySelector('#pfc-card');
+    const front   = container.querySelector('#pfc-front');
+    const back    = container.querySelector('#pfc-back');
+    const btnR    = container.querySelector('#pfc-right');
+    const btnW    = container.querySelector('#pfc-wrong');
+    const endEl   = container.querySelector('#pfc-end');
+    const msgEl   = container.querySelector('#pfc-msg');
+    const errList = container.querySelector('#pfc-err-list');
+    const replay  = container.querySelector('#pfc-replay');
+    const fix     = container.querySelector('#pfc-fix');
+    const statC   = container.querySelector('#pfc-correct');
+    const statE   = container.querySelector('#pfc-errors');
+    const statR   = container.querySelector('#pfc-remain');
+
+    function updateStats() {
+      statC.textContent = `Correct: ${correct}`;
+      statE.textContent = `Wrong: ${errors.length}`;
+      statR.textContent = `Remaining: ${Math.max(0, deck.length - idx)}`;
+    }
+
+    function show() {
+      const inner = card.querySelector('.fc-inner');
+      inner.style.transition = 'none';
+      card.classList.remove('flipped');
+      void inner.offsetWidth;
+      inner.style.transition = '';
+      const c = deck[idx];
+      front.innerHTML = `<span class="pf-phrase">${c.pronoun}</span><span class="fc-hint">tap to flip</span>`;
+      back.textContent = c.back;
+      updateStats();
+    }
+
+    function advance(right) {
+      if (!right) errors.push(deck[idx]);
+      else correct++;
+      idx++;
+      if (idx >= deck.length) { endRound(); return; }
+      show();
+    }
+
+    function endRound() {
+      card.classList.add('hidden');
+      btnR.classList.add('hidden');
+      btnW.classList.add('hidden');
+      endEl.classList.remove('hidden');
+      msgEl.textContent = errors.length
+        ? `Round done. ${correct} correct, ${errors.length} wrong.`
+        : 'Perfect round!';
+      errList.innerHTML = errors.length
+        ? '<ul>' + errors.map(c => `<li>${c.pronoun} → <strong>${c.back}</strong></li>`).join('') + '</ul>'
+        : '';
+      fix.classList.toggle('hidden', errors.length === 0);
+    }
+
+    card.addEventListener('click', () => card.classList.toggle('flipped'));
+    btnR.addEventListener('click', () => advance(true));
+    btnW.addEventListener('click', () => advance(false));
+
+    replay.addEventListener('click', () => {
+      deck = shuffle([...cards]); idx = 0; correct = 0; errors = [];
+      endEl.classList.add('hidden');
+      card.classList.remove('hidden');
+      btnR.classList.remove('hidden'); btnW.classList.remove('hidden');
+      show();
+    });
+    fix.addEventListener('click', () => {
+      deck = shuffle(errors); idx = 0; correct = 0; errors = [];
+      endEl.classList.add('hidden');
+      card.classList.remove('hidden');
+      btnR.classList.remove('hidden'); btnW.classList.remove('hidden');
+      show();
+    });
+
+    show();
+  }
+
+  function shuffle(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function playAudio(hash) {
+    new Audio(`/mp3s/${hash}.mp3`).play().catch(() => {});
+  }
+
+  loadTopicList();
+</script>
+</body>
+</html>

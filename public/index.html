@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verbmaster</title>
+  <link rel="icon" href="/verbmaster.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#1b61c9">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Verbmaster">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<script src="/nav.js"></script>
+
+<main>
+  <div class="section-label">Spanish verb conjugation</div>
+  <h1 class="section-title">Practice your verbs</h1>
+
+  <div class="search-wrap">
+    <input class="form-input" type="search" id="search" placeholder="Search verbs — e.g. abandonar, to run…" autocomplete="off">
+  </div>
+
+  <div class="quick-sets">
+    <h2>Practice sets</h2>
+    <div class="set-grid">
+      <a class="set-card" href="/flashcards.html?max_importance=10">Top 10</a>
+      <a class="set-card" href="/flashcards.html?max_importance=25">Top 25</a>
+      <a class="set-card" href="/flashcards.html?max_importance=50">Top 50</a>
+      <a class="set-card" href="/flashcards.html?max_importance=100">Top 100</a>
+      <a class="set-card" href="/flashcards.html?max_importance=200">Top 200</a>
+      <a class="set-card" href="/flashcards.html?max_importance=500">Top 500</a>
+    </div>
+  </div>
+
+  <div id="verb-list"></div>
+  <div id="load-more-wrap" style="display:none">
+    <button class="btn-outline" id="load-more">Load more</button>
+  </div>
+</main>
+
+<div id="practice-bar" class="practice-bar hidden">
+  <span id="practice-count">0 verbs selected</span>
+  <button id="clear-selection" class="practice-bar-clear">Clear</button>
+  <a id="practice-link" href="#" class="practice-bar-btn">Practice selected →</a>
+</div>
+
+<script src="/offline-data.js"></script>
+<script>
+  const searchEl    = document.getElementById('search');
+  const listEl      = document.getElementById('verb-list');
+  const loadMoreWrap = document.getElementById('load-more-wrap');
+  const loadMoreBtn  = document.getElementById('load-more');
+  const practiceBar  = document.getElementById('practice-bar');
+  const practiceCount = document.getElementById('practice-count');
+  const practiceLink  = document.getElementById('practice-link');
+
+  let offset = 0;
+  const LIMIT = 50;
+  let currentQ = '';
+  const selected = new Set();
+
+  function updateBar() {
+    if (selected.size === 0) {
+      practiceBar.classList.add('hidden');
+    } else {
+      practiceBar.classList.remove('hidden');
+      practiceCount.textContent = `${selected.size} verb${selected.size > 1 ? 's' : ''} selected`;
+      practiceLink.href = `/flashcards.html?verbs=${encodeURIComponent([...selected].join(','))}`;
+    }
+  }
+
+  async function loadVerbs(reset = false) {
+    if (reset) { offset = 0; listEl.innerHTML = ''; }
+    const q = currentQ ? `&q=${encodeURIComponent(currentQ)}` : '';
+    const verbs = await fetchJsonWithOffline(
+      `/api/verbs?limit=${LIMIT}&offset=${offset}${q}`,
+      data => offlineVerbs(data, { limit: LIMIT, offset, q: currentQ })
+    );
+
+    verbs.forEach(v => {
+      const row = document.createElement('div');
+      row.className = 'verb-row';
+      if (selected.has(v.infinitive)) row.classList.add('verb-row-selected');
+      row.dataset.infinitive = v.infinitive;
+      row.innerHTML = `
+        <button class="verb-tick ${selected.has(v.infinitive) ? 'verb-tick-on' : ''}" aria-label="Select for practice">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 7L5.5 10L11.5 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <a class="verb-name" href="/verb.html?v=${encodeURIComponent(v.infinitive)}">${v.infinitive}</a>
+        <span class="verb-meaning">${v.meaning}</span>
+        <a class="practice-btn" href="/verb.html?v=${encodeURIComponent(v.infinitive)}">Practice</a>
+      `;
+      row.querySelector('.verb-tick').addEventListener('click', () => toggleVerb(v.infinitive, row));
+      listEl.appendChild(row);
+    });
+
+    offset += verbs.length;
+    loadMoreWrap.style.display = verbs.length === LIMIT ? 'block' : 'none';
+  }
+
+  function toggleVerb(infinitive, row) {
+    const tick = row.querySelector('.verb-tick');
+    if (selected.has(infinitive)) {
+      selected.delete(infinitive);
+      tick.classList.remove('verb-tick-on');
+      row.classList.remove('verb-row-selected');
+    } else {
+      selected.add(infinitive);
+      tick.classList.add('verb-tick-on');
+      row.classList.add('verb-row-selected');
+    }
+    updateBar();
+  }
+
+  document.getElementById('clear-selection').addEventListener('click', () => {
+    selected.clear();
+    document.querySelectorAll('.verb-tick-on').forEach(el => el.classList.remove('verb-tick-on'));
+    document.querySelectorAll('.verb-row-selected').forEach(el => el.classList.remove('verb-row-selected'));
+    updateBar();
+  });
+
+  let debounce;
+  searchEl.addEventListener('input', () => {
+    clearTimeout(debounce);
+    debounce = setTimeout(() => {
+      currentQ = searchEl.value.trim();
+      loadVerbs(true);
+    }, 250);
+  });
+
+  loadMoreBtn.addEventListener('click', () => loadVerbs(false));
+  loadVerbs(true);
+</script>
+</body>
+</html>

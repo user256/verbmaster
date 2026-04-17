@@ -1,0 +1,123 @@
+// Practice set definitions — ported from Hugo practicar/ content
+const PRACTICE_SETS = [
+  {
+    slug: 'top-10',
+    title: 'Los 10 verbos más importantes',
+    group: 'Top verbs',
+    max_importance: 10,
+  },
+  {
+    slug: 'top-20',
+    title: 'Los 20 verbos más importantes',
+    group: 'Top verbs',
+    max_importance: 20,
+  },
+  {
+    slug: 'top-30',
+    title: 'Los 30 verbos más importantes',
+    group: 'Top verbs',
+    max_importance: 30,
+  },
+  {
+    slug: 'top-50',
+    title: 'Los 50 verbos más importantes',
+    group: 'Top verbs',
+    max_importance: 50,
+  },
+  {
+    slug: 'top-100',
+    title: 'Los 100 verbos más importantes',
+    group: 'Top verbs',
+    max_importance: 100,
+  },
+  {
+    slug: 'top-200',
+    title: 'Los 200 verbos más importantes',
+    group: 'Top verbs',
+    max_importance: 200,
+  },
+  {
+    slug: 'top-250',
+    title: 'Los 250 verbos más importantes',
+    group: 'Top verbs',
+    max_importance: 250,
+  },
+  {
+    slug: 'essential-verbs',
+    title: 'Essential verbs',
+    group: 'Curated',
+    verbs: 'ser,estar,hacer,haber,poder,ir,tener',
+  },
+  {
+    slug: 'most-common-irregulars',
+    title: 'Most common irregulars',
+    group: 'Curated',
+    verbs: 'ir,ser,hacer,ver,dar,decir,tener,poder,saber,querer,llegar,estar,pensar,encontrar,comer,vivir,hablar,amar,trabajar',
+  },
+  {
+    slug: 'ar-verbs',
+    title: 'Regular AR verbos',
+    group: 'By type',
+    verbs: 'amar,llamar,caminar,viajar,estudiar,ayudar,enseñar,llegar,necesitar,mirar',
+  },
+  {
+    slug: 'er-verbs',
+    title: 'Regular ER verbos',
+    group: 'By type',
+    verbs: 'beber,comer,correr,temer,aprender,vender,comprender,depender,deber,exceder,toser,absorber,prometer',
+  },
+  {
+    slug: 'ir-verbs',
+    title: 'Regular IR verbos',
+    group: 'By type',
+    verbs: 'vivir,partir,abrir,escribir,compartir,existir,prohibir,recibir,sufrir',
+  },
+  {
+    slug: 'reflexive-verbs',
+    title: 'Reflexive verbos',
+    group: 'By type',
+    verbs: 'sentarse,levantarse,acostarse,despertarse,bañarse,vestirse,desvestirse,peinarse,cepillarse,lavarse,secarse,cortarse,quebrarse,aburrirse,divertirse,concentrarse,esforzarse,enfermarse,preocuparse',
+  },
+  {
+    slug: 'irregulars-preterite',
+    title: 'Irregular Preterite verbs',
+    group: 'Irregular',
+    verbs: 'poner,poder,saber,hacer,querer,venir,decir,traer,conducir,traducir,tener,estar,andar,caber,dar',
+  },
+  {
+    slug: 'irregulars-simple-future',
+    title: 'Irregular Simple Future verbs',
+    group: 'Irregular',
+    verbs: 'poner,poder,saber,hacer,querer,venir,decir,tener,salir,haber,caber,valer,ver',
+  },
+  {
+    slug: 'stem-changing',
+    title: 'Stem Changing verbos',
+    group: 'Stem changing',
+    verbs: 'poder,querer,seguir,encontrar,pensar,volver,sentir,contar,empezar,perder,entender,pedir,recordar,comenzar,servir,morir,jugar,cerrar,preferir,defender,mentir,devolver,divertir,competir,almorzar,vestir,volar,acostar,dormir,repetir,resolver,adquirir,acertar,emplear',
+  },
+  {
+    slug: 'stem-changing-e-ie',
+    title: 'Stem Changing e > ie',
+    group: 'Stem changing',
+    verbs: 'tener,venir,pensar,sentir,empezar,perder,entender,comenzar,cerrar,preferir,fregar,encerrar,confesar,defender,sugerir,mentir,recomendar,calentar,encender,negar,atender,tropezar,atravesar,sentarse,despertarse,divertirse,acertar,descender',
+  },
+  {
+    slug: 'stem-changing-e-i',
+    title: 'Stem Changing e > i',
+    group: 'Stem changing',
+    verbs: 'decir,seguir,pedir,conseguir,servir,elegir,despedir,repetir,perseguir,impedir,corregir,medir,vestirse,reírse,sonreírse',
+  },
+  {
+    slug: 'stem-changing-o-ue',
+    title: 'Stem Changing o > ue',
+    group: 'Stem changing',
+    verbs: 'poder,encontrar,contar,recordar,morir,colgar,aprobar,costar,doler,devolver,soler,mover,almorzar,volar,mostrar,llover,probar,dormir,sonar,resolver,soñar,demostrar,torcer,morder,acordarse,rogar',
+  },
+  {
+    slug: 'stem-changing-i-ie',
+    title: 'Stem Changing i > ie',
+    group: 'Stem changing',
+    verbs: 'adquirir,inquirir',
+  },
+];
