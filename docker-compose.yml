@@ -4,7 +4,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./verbmaster.db:/app/verbmaster.db
-      - /var/www/mp3:/app/mp3s:ro
+      - /var/www/mp3s:/app/mp3s:ro
     environment:
       PORT: 3000
       MP3_PATH: /app/mp3s
