@@ -125,7 +125,10 @@ function mountConjugationGame(container, allSentences) {
   startBtn.addEventListener('click', () => {
     const filtered = filteredSentences();
     const n = Math.min(parseInt(numInput.value) || 10, filtered.length);
-    deck = shuffle(filtered).slice(0, n);
+    const pool = window.VerbmasterProgress?.weakSpotEnabled?.() && window.VerbmasterProgress?.enabled?.()
+      ? window.VerbmasterProgress.weakBiasedShuffleSentences(filtered)
+      : shuffle(filtered);
+    deck = pool.slice(0, n);
     idx = 0; score = 0; errorCount = 0; wrongItems = [];
     controlsEl.style.display = 'none';
     summaryEl.style.display = 'none';
@@ -159,13 +162,18 @@ function mountConjugationGame(container, allSentences) {
     const correctAnswer = deck[idx].conjugated_form.toLowerCase().replace(/\.$/, '');
     if (!userAnswer) return;
 
-    if (userAnswer === correctAnswer) {
+    const ok = userAnswer === correctAnswer;
+    if (ok) {
       resultEl.innerHTML = '<span class="cg-correct">✓ Correct</span>';
       score++;
     } else {
       resultEl.innerHTML = `<span class="cg-wrong">✗ Incorrect — correct answer: <strong>${correctAnswer}</strong></span>`;
       errorCount++;
       wrongItems.push(deck[idx]);
+    }
+    if (window.VerbmasterProgress?.enabled()) {
+      window.VerbmasterProgress.recordSentence(deck[idx], ok);
+      window.VerbmasterProgress.touchLast(location.href, document.title);
     }
     idx++;
     updateScores();

@@ -15,7 +15,15 @@ app.use('/mp3s', express.static(
 // ── Verbs ──────────────────────────────────────────────────────────────────
 
 // GET /api/verbs?limit=50&offset=0&q=search
+// GET /api/verbs?full=1 — entire verb list (for “random from full deck”)
 app.get('/api/verbs', (req, res) => {
+  if (req.query.full === '1') {
+    const rows = db.prepare(
+      'SELECT id, infinitive, meaning, importance FROM verbs ORDER BY importance ASC NULLS LAST'
+    ).all();
+    return res.json(rows);
+  }
+
   const limit  = Math.min(parseInt(req.query.limit) || 50, 500);
   const offset = parseInt(req.query.offset) || 0;
   const q      = req.query.q ? `%${req.query.q}%` : null;

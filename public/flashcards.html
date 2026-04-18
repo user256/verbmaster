@@ -12,9 +12,15 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Verbmaster">
   <link rel="stylesheet" href="/style.css">
+  <style>
+    /* Custom verb list (?verbs=): show only deck sample, not importance rank */
+    .fc-range-row.fc-hide-rank > label:not(.fc-deck-wrap),
+    .fc-range-row.fc-hide-rank > button.fc-range-verbs-btn { display: none !important; }
+  </style>
 </head>
 <body>
 
+<script src="/progress-store.js"></script>
 <script src="/nav.js" data-back="/" data-back-label="← All verbs"></script>
 
 <main>
@@ -41,6 +47,12 @@
     </div>
     <div id="flashcard-root"></div>
     <div id="fc-range-row" class="fc-range-row" style="display:none">
+      <label class="fc-opt-label fc-deck-wrap" id="fc-deck-sample-wrap" style="display:none">Deck
+        <select id="fc-deck-sample">
+          <option value="all" selected>All in range</option>
+          <option value="random10">10 random</option>
+        </select>
+      </label>
       <label class="fc-opt-label">Verbs
         <input class="fc-range-input" type="number" id="fc-from" min="1" value="1">
         <span style="color:var(--weak);font-size:13px">to</span>
@@ -56,6 +68,12 @@
 
   <div id="tab-practice" class="tab-panel hidden">
     <div id="practice-range-row" class="fc-range-row" style="display:none">
+      <label class="fc-opt-label fc-deck-wrap" id="practice-deck-sample-wrap" style="display:none">Deck
+        <select id="practice-deck-sample">
+          <option value="all" selected>All in range</option>
+          <option value="random10">10 random</option>
+        </select>
+      </label>
       <label class="fc-opt-label">Verbs
         <input class="fc-range-input" type="number" id="practice-from" min="1" value="1">
         <span style="color:var(--weak);font-size:13px">to</span>
@@ -96,11 +114,108 @@
   const verb          = params.get('verb');
   const maxImportance = params.get('max_importance');
   const verbsParam    = params.get('verbs');
+  const deckParam     = params.get('deck');
+  const fullDeck      = params.get('all') === '1';
   const ALL_TENSES    = 'present,preterite,future,imperfect,conditional';
+
+  function applyDeckFromUrl() {
+    if (deckParam !== 'random10') return;
+    ['fc-deck-sample', 'practice-deck-sample'].forEach(id => {
+      const s = document.getElementById(id);
+      if (s) s.value = 'random10';
+    });
+  }
+
+  function shuffle(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function shuffleVerbsBias(rows) {
+    return window.VerbmasterProgress?.weakBiasedShuffleVerbRows
+      ? window.VerbmasterProgress.weakBiasedShuffleVerbRows(rows)
+      : shuffle(rows);
+  }
+
+  function getDeckSample() {
+    if (fullDeck) return { random: 10 };
+    const el = document.getElementById('fc-deck-sample');
+    if (!el || el.value === 'all') return {};
+    if (el.value === 'random10') return { random: 10 };
+    return {};
+  }
+
+  function syncDeckSampleSelects(sourceId) {
+    const val = document.getElementById(sourceId).value;
+    ['fc-deck-sample', 'practice-deck-sample'].forEach(id => {
+      const s = document.getElementById(id);
+      if (s && s.id !== sourceId) s.value = val;
+    });
+  }
+
+  function onDeckSampleChange(changedId) {
+    syncDeckSampleSelects(changedId);
+    clearLoadedTabs();
+    if (!document.getElementById('tab-flashcards').classList.contains('hidden')) {
+      loadMode(getActiveFlashcardMode());
+    }
+    if (!document.getElementById('tab-practice').classList.contains('hidden')) {
+      loadPracticeDeck();
+    }
+    if (!document.getElementById('tab-conversations').classList.contains('hidden')) {
+      loadConversationsDeck();
+    }
+    if (verbGridLoaded) loadVerbGrid();
+  }
+
+  async function fetchVerbsForDeck() {
+    if (verbsParam) {
+      const rows = await fetchJsonWithOffline(
+        `/api/verbs-list?verbs=${encodeURIComponent(verbsParam)}`,
+        data => offlineVerbsList(data, verbsParam)
+      );
+      return rows.filter(v => !excluded.has(v.infinitive));
+    }
+    if (verb) {
+      const row = await fetchJsonWithOffline(
+        `/api/verbs/${encodeURIComponent(verb)}`,
+        data => offlineVerb(data, verb)
+      );
+      return row ? [row] : [];
+    }
+    if (fullDeck) {
+      const rows = await fetchJsonWithOffline(
+        `/api/verbs?full=1`,
+        data => offlineVerbs(data, { all: true })
+      );
+      return rows.filter(v => !excluded.has(v.infinitive));
+    }
+    if (maxImportance) {
+      const range = getRangeParams();
+      const minParam = range.min ? `&min_importance=${range.min}` : '';
+      const rows = await fetchJsonWithOffline(
+        `/api/verbs?max_importance=${range.max}${minParam}&limit=500`,
+        data => offlineVerbs(data, {
+          maxImportance: parseInt(range.max),
+          minImportance: range.min ? parseInt(range.min) : null,
+          limit: 500
+        })
+      );
+      return rows.filter(v => !excluded.has(v.infinitive));
+    }
+    return [];
+  }
 
   if (verb) {
     document.getElementById('page-label').textContent = 'Conjugation practice';
     document.getElementById('page-title').textContent = verb;
+  } else if (fullDeck) {
+    document.getElementById('page-label').textContent = 'Practice';
+    document.getElementById('page-title').textContent = '10 random verbs';
   } else if (maxImportance) {
     document.getElementById('page-label').textContent = 'Practice set';
     document.getElementById('page-title').textContent = `Verbs 1–${maxImportance}`;
@@ -111,7 +226,7 @@
   }
 
   function updateTitle() {
-    if (!maxImportance) return;
+    if (fullDeck || !maxImportance) return;
     const f = parseInt(document.getElementById('fc-from')?.value) || 1;
     const t = parseInt(document.getElementById('fc-to')?.value)   || parseInt(maxImportance);
     document.getElementById('page-title').textContent = f === 1 ? `Verbs 1–${t}` : `Verbs ${f}–${t}`;
@@ -135,7 +250,7 @@
   }
 
   function handleRangeChange(sourcePrefix) {
-    if (!maxImportance) return;
+    if (fullDeck || !maxImportance) return;
     const fromEl = document.getElementById(`${sourcePrefix}-from`);
     const toEl = document.getElementById(`${sourcePrefix}-to`);
     const f = Math.max(1, parseInt(fromEl.value) || 1);
@@ -161,9 +276,28 @@
   const excluded = new Set();
 
   async function init() {
+    if (fullDeck) {
+      document.getElementById('fc-range-row').style.display = 'none';
+      document.getElementById('practice-range-row').style.display = 'none';
+      loadMode('vocab');
+      return;
+    }
     if (verbsParam) {
-      // custom selection from homepage — hide verbs tab, no range controls
+      // custom selection from homepage — hide verbs tab, no rank range
       document.querySelector('[data-tab="verbs"]').style.display = 'none';
+      const n = verbsParam.split(',').map(v => v.trim()).filter(Boolean).length;
+      if (n > 1) {
+        document.getElementById('fc-range-row').classList.add('fc-hide-rank');
+        document.getElementById('fc-range-row').style.display = 'flex';
+        document.getElementById('practice-range-row').classList.add('fc-hide-rank');
+        document.getElementById('practice-range-row').style.display = 'flex';
+        document.getElementById('fc-deck-sample-wrap').style.display = '';
+        document.getElementById('practice-deck-sample-wrap').style.display = '';
+        ['fc-deck-sample', 'practice-deck-sample'].forEach(id => {
+          document.getElementById(id).addEventListener('change', e => onDeckSampleChange(e.target.id));
+        });
+      }
+      applyDeckFromUrl();
       loadMode('vocab');
       return;
     }
@@ -187,6 +321,11 @@
       rangeInputs.forEach(input => { input.max = maxImportance; });
       document.getElementById('fc-range-row').style.display = 'flex';
       document.getElementById('practice-range-row').style.display = 'flex';
+      document.getElementById('fc-deck-sample-wrap').style.display = '';
+      document.getElementById('practice-deck-sample-wrap').style.display = '';
+      ['fc-deck-sample', 'practice-deck-sample'].forEach(id => {
+        document.getElementById(id).addEventListener('change', e => onDeckSampleChange(e.target.id));
+      });
 
       let rangeDebounce;
       rangeInputs.forEach(el => el.addEventListener('input', () => {
@@ -194,6 +333,7 @@
         rangeDebounce = setTimeout(() => handleRangeChange(el.id.startsWith('practice-') ? 'practice' : 'fc'), 600);
       }));
     }
+    applyDeckFromUrl();
     loadMode('vocab');
   }
 
@@ -210,16 +350,24 @@
 
   async function loadVerbGrid() {
     verbGridLoaded = true;
-    const range = getRangeParams();
-    const minParam = range.min ? `&min_importance=${range.min}` : '';
-    const verbs = await fetchJsonWithOffline(
-      `/api/verbs?max_importance=${range.max}${minParam}&limit=500`,
-      data => offlineVerbs(data, {
-        maxImportance: parseInt(range.max),
-        minImportance: range.min ? parseInt(range.min) : null,
-        limit: 500
-      })
-    );
+    let verbs;
+    if (fullDeck) {
+      verbs = await fetchJsonWithOffline(
+        `/api/verbs?full=1`,
+        data => offlineVerbs(data, { all: true })
+      );
+    } else {
+      const range = getRangeParams();
+      const minParam = range.min ? `&min_importance=${range.min}` : '';
+      verbs = await fetchJsonWithOffline(
+        `/api/verbs?max_importance=${range.max}${minParam}&limit=500`,
+        data => offlineVerbs(data, {
+          maxImportance: parseInt(range.max),
+          minImportance: range.min ? parseInt(range.min) : null,
+          limit: 500
+        })
+      );
+    }
     renderVerbGrid(verbs);
   }
 
@@ -302,6 +450,7 @@
   }
 
   function getRangeParams() {
+    if (fullDeck) return { min: null, max: null };
     const fromEl = document.getElementById('fc-from');
     const toEl   = document.getElementById('fc-to');
     if (!fromEl || !toEl) return { max: maxImportance };
@@ -313,6 +462,7 @@
   async function loadMode(mode) {
     const mount = document.getElementById('flashcard-root');
     const range = getRangeParams();
+    const takeRandom = getDeckSample().random || 0;
 
     if (mode === 'vocab') {
       let verbs;
@@ -327,6 +477,11 @@
           data => offlineVerb(data, verb)
         );
         verbs = row ? [row] : [];
+      } else if (fullDeck) {
+        verbs = await fetchJsonWithOffline(
+          `/api/verbs?full=1`,
+          data => offlineVerbs(data, { all: true })
+        );
       } else {
         const minParam = range.min ? `&min_importance=${range.min}` : '';
         verbs = await fetchJsonWithOffline(
@@ -339,14 +494,31 @@
         );
       }
       verbs = verbs.filter(v => !excluded.has(v.infinitive));
+      if (takeRandom) verbs = shuffleVerbsBias(verbs).slice(0, Math.min(takeRandom, verbs.length));
       mountFlashcards(mount, buildVerbCards(verbs));
     } else {
       const tenses = mode === 'all' ? ALL_TENSES : mode;
       let url;
       if (verbsParam) {
-        url = `/api/conjugations?verbs=${encodeURIComponent(verbsParam)}&tenses=${tenses}`;
+        if (takeRandom) {
+          const deck = await fetchVerbsForDeck();
+          const picked = shuffleVerbsBias(deck).slice(0, Math.min(takeRandom, deck.length)).map(v => v.infinitive);
+          url = picked.length
+            ? `/api/conjugations?verbs=${encodeURIComponent(picked.join(','))}&tenses=${tenses}`
+            : `/api/conjugations?verbs=${encodeURIComponent(verbsParam)}&tenses=${tenses}`;
+        } else {
+          url = `/api/conjugations?verbs=${encodeURIComponent(verbsParam)}&tenses=${tenses}`;
+        }
       } else if (verb) {
         url = `/api/conjugations?verb_id=${verbId}&tenses=${tenses}`;
+      } else if (takeRandom) {
+        const deck = await fetchVerbsForDeck();
+        const picked = shuffleVerbsBias(deck).slice(0, Math.min(takeRandom, deck.length)).map(v => v.infinitive);
+        if (!picked.length) {
+          mountFlashcards(mount, []);
+          return;
+        }
+        url = `/api/conjugations?verbs=${encodeURIComponent(picked.join(','))}&tenses=${tenses}`;
       } else {
         const minParam = range.min ? `&min_importance=${range.min}` : '';
         url = `/api/conjugations?max_importance=${range.max}${minParam}&tenses=${tenses}`;
@@ -372,7 +544,7 @@
     const key = getDeckKey();
     if (!mount || mount.dataset.loadedKey === key) return;
     mount.dataset.loadedKey = key;
-    const url = getSentencesUrl(200);
+    const url = await sentencesFetchUrl(200);
     const res = await fetch(url);
     const sentences = (await res.json()).filter(s => !excluded.has(s.infinitive));
     mountAudioDeck(mount, sentences);
@@ -384,7 +556,7 @@
     if (practiceLoadedKey === key) return;
     practiceLoadedKey = key;
     mount.innerHTML = '<p style="color:var(--weak);font-size:14px">Loading practice...</p>';
-    const res = await fetch(getSentencesUrl(500));
+    const res = await fetch(await sentencesFetchUrl(500));
     const sentences = (await res.json()).filter(s => !excluded.has(s.infinitive));
     mountConjugationGame(mount, sentences);
   }
@@ -395,36 +567,84 @@
     if (conversationsLoadedKey === key) return;
     conversationsLoadedKey = key;
     mount.innerHTML = '<p style="color:var(--weak);font-size:14px">Loading conversations...</p>';
-    const res = await fetch(getConversationsUrl());
+    const res = await fetch(await conversationsFetchUrl());
     renderSetConversations(mount, await res.json());
   }
 
   function getDeckKey() {
     const range = getRangeParams();
+    const sample = getDeckSample();
     return JSON.stringify({
       verb,
       verbsParam,
       maxImportance,
+      fullDeck,
       min: range.min || null,
       max: range.max || null,
+      random: sample.random || null,
+      weak: window.VerbmasterProgress?.weakSpotEnabled?.() ? 1 : 0,
       excluded: [...excluded].sort()
     });
   }
 
-  function getSentencesUrl(limit) {
+  async function sentencesFetchUrl(limit) {
     const range = getRangeParams();
     const minParam = range.min ? `&min_importance=${range.min}` : '';
-    if (verbsParam) return `/api/sentences?verbs=${encodeURIComponent(filteredVerbsParam())}&limit=${limit}`;
+    const takeRandom = getDeckSample().random || 0;
     if (verb) return `/api/sentences?verb_id=${verbId}&limit=${limit}`;
-    return `/api/sentences?max_importance=${range.max}${minParam}&limit=${limit}`;
+    if (verbsParam) {
+      if (takeRandom) {
+        const deck = await fetchVerbsForDeck();
+        const picked = shuffleVerbsBias(deck).slice(0, Math.min(takeRandom, deck.length)).map(v => v.infinitive);
+        if (picked.length) return `/api/sentences?verbs=${encodeURIComponent(picked.join(','))}&limit=${limit}`;
+      }
+      return `/api/sentences?verbs=${encodeURIComponent(filteredVerbsParam())}&limit=${limit}`;
+    }
+    if (fullDeck) {
+      const deck = await fetchVerbsForDeck();
+      const picked = shuffleVerbsBias(deck).slice(0, Math.min(takeRandom, deck.length)).map(v => v.infinitive);
+      if (picked.length) return `/api/sentences?verbs=${encodeURIComponent(picked.join(','))}&limit=${limit}`;
+      return `/api/sentences?max_importance=1&limit=${limit}`;
+    }
+    if (maxImportance) {
+      if (takeRandom) {
+        const deck = await fetchVerbsForDeck();
+        const picked = shuffleVerbsBias(deck).slice(0, Math.min(takeRandom, deck.length)).map(v => v.infinitive);
+        if (picked.length) return `/api/sentences?verbs=${encodeURIComponent(picked.join(','))}&limit=${limit}`;
+      }
+      return `/api/sentences?max_importance=${range.max}${minParam}&limit=${limit}`;
+    }
+    return `/api/sentences?verb_id=${verbId}&limit=${limit}`;
   }
 
-  function getConversationsUrl() {
+  async function conversationsFetchUrl() {
     const range = getRangeParams();
     const minParam = range.min ? `&min_importance=${range.min}` : '';
-    if (verbsParam) return `/api/conversations?verbs=${encodeURIComponent(filteredVerbsParam())}`;
+    const takeRandom = getDeckSample().random || 0;
     if (verb) return `/api/conversations?verb_id=${verbId}`;
-    return `/api/conversations?max_importance=${range.max}${minParam}`;
+    if (verbsParam) {
+      if (takeRandom) {
+        const deck = await fetchVerbsForDeck();
+        const picked = shuffleVerbsBias(deck).slice(0, Math.min(takeRandom, deck.length)).map(v => v.infinitive);
+        if (picked.length) return `/api/conversations?verbs=${encodeURIComponent(picked.join(','))}`;
+      }
+      return `/api/conversations?verbs=${encodeURIComponent(filteredVerbsParam())}`;
+    }
+    if (fullDeck) {
+      const deck = await fetchVerbsForDeck();
+      const picked = shuffleVerbsBias(deck).slice(0, Math.min(takeRandom, deck.length)).map(v => v.infinitive);
+      if (picked.length) return `/api/conversations?verbs=${encodeURIComponent(picked.join(','))}`;
+      return `/api/conversations?max_importance=1`;
+    }
+    if (maxImportance) {
+      if (takeRandom) {
+        const deck = await fetchVerbsForDeck();
+        const picked = shuffleVerbsBias(deck).slice(0, Math.min(takeRandom, deck.length)).map(v => v.infinitive);
+        if (picked.length) return `/api/conversations?verbs=${encodeURIComponent(picked.join(','))}`;
+      }
+      return `/api/conversations?max_importance=${range.max}${minParam}`;
+    }
+    return `/api/conversations?verb_id=${verbId}`;
   }
 
   function filteredVerbsParam() {

@@ -34,6 +34,7 @@
 </head>
 <body>
 
+<script src="/progress-store.js"></script>
 <script src="/nav.js"></script>
 
 <main style="max-width:1100px">
@@ -125,13 +126,13 @@
         btn.classList.add('active');
         content.querySelector(`#tab-${btn.dataset.tab}`).classList.remove('hidden');
         if (btn.dataset.tab === 'flashcards') {
-          mountPhraseFlashcards(content.querySelector('#pm-fc-mount'), data.phrases);
+          mountPhraseFlashcards(content.querySelector('#pm-fc-mount'), data.phrases, slug);
         }
       });
     });
   }
 
-  function mountPhraseFlashcards(el, phrases) {
+  function mountPhraseFlashcards(el, phrases, topicSlug) {
     const cards = phrases.map(p => ({
       infinitive: p.phrase_es,
       meaning: '',
@@ -140,24 +141,27 @@
       back: p.phrase_en,
       audio_hash: p.audio_hash,
       _isPhrase: true,
+      _topicSlug: topicSlug,
     }));
 
-    // Custom renderer — override showCard after mount
     mountFlashcards(el, cards);
 
-    // Patch showCard to render phrase-style front
     const inner = el.querySelector('.fc-inner');
     const front = el.querySelector('.fc-front');
     if (!inner || !front) return;
 
-    // Re-mount with patched rendering
-    const origMount = el.innerHTML;
     el.innerHTML = '';
-    mountPhraseDeck(el, cards);
+    mountPhraseDeck(el, cards, topicSlug);
   }
 
-  function mountPhraseDeck(container, cards) {
-    let deck = shuffle([...cards]);
+  function phraseDeckShuffle(arr) {
+    return window.VerbmasterProgress?.weakBiasedShufflePhrases
+      ? window.VerbmasterProgress.weakBiasedShufflePhrases(arr)
+      : shuffle(arr);
+  }
+
+  function mountPhraseDeck(container, cards, topicSlug) {
+    let deck = phraseDeckShuffle([...cards]);
     let idx = 0, correct = 0, errors = [];
 
     container.innerHTML = `
@@ -221,8 +225,13 @@
     }
 
     function advance(right) {
-      if (!right) errors.push(deck[idx]);
+      const cur = deck[idx];
+      if (!right) errors.push(cur);
       else correct++;
+      if (window.VerbmasterProgress?.enabled() && topicSlug) {
+        window.VerbmasterProgress.recordPhrase(topicSlug, cur, right);
+        window.VerbmasterProgress.touchLast(location.href, document.title);
+      }
       idx++;
       if (idx >= deck.length) { endRound(); return; }
       show();
@@ -247,14 +256,14 @@
     btnW.addEventListener('click', () => advance(false));
 
     replay.addEventListener('click', () => {
-      deck = shuffle([...cards]); idx = 0; correct = 0; errors = [];
+      deck = phraseDeckShuffle([...cards]); idx = 0; correct = 0; errors = [];
       endEl.classList.add('hidden');
       card.classList.remove('hidden');
       btnR.classList.remove('hidden'); btnW.classList.remove('hidden');
       show();
     });
     fix.addEventListener('click', () => {
-      deck = shuffle(errors); idx = 0; correct = 0; errors = [];
+      deck = phraseDeckShuffle(errors); idx = 0; correct = 0; errors = [];
       endEl.classList.add('hidden');
       card.classList.remove('hidden');
       btnR.classList.remove('hidden'); btnW.classList.remove('hidden');

@@ -15,6 +15,7 @@
 </head>
 <body>
 
+<script src="/progress-store.js"></script>
 <script src="/nav.js"></script>
 
 <main>
@@ -34,8 +35,11 @@
       <a class="set-card" href="/flashcards.html?max_importance=100">Top 100</a>
       <a class="set-card" href="/flashcards.html?max_importance=200">Top 200</a>
       <a class="set-card" href="/flashcards.html?max_importance=500">Top 500</a>
+      <a class="set-card" href="/flashcards.html?all=1">10 random</a>
     </div>
   </div>
+
+  <div id="progress-home" class="progress-home hidden" aria-live="polite"></div>
 
   <div id="verb-list"></div>
   <div id="load-more-wrap" style="display:none">
@@ -135,6 +139,41 @@
 
   loadMoreBtn.addEventListener('click', () => loadVerbs(false));
   loadVerbs(true);
+
+  function renderProgressHome() {
+    const el = document.getElementById('progress-home');
+    if (!el || !window.VerbmasterProgress) return;
+    el.innerHTML = '';
+    if (!VerbmasterProgress.enabled()) {
+      el.classList.add('hidden');
+      return;
+    }
+    const last = VerbmasterProgress.getLast();
+    const due = VerbmasterProgress.getDueCount();
+    const wrap = document.createElement('div');
+    wrap.className = 'set-grid progress-home-inner';
+    if (last && last.href) {
+      const a = document.createElement('a');
+      a.className = 'set-card';
+      a.href = last.href;
+      a.textContent = 'Continue: ' + (last.title || 'Practice').replace(/\s+—\s*Verbmaster$/, '').slice(0, 72);
+      wrap.appendChild(a);
+    }
+    if (due > 0) {
+      const s = document.createElement('span');
+      s.className = 'progress-due-hint';
+      s.textContent = `${due} due for review`;
+      wrap.appendChild(s);
+    }
+    if (!wrap.childNodes.length) {
+      el.classList.add('hidden');
+      return;
+    }
+    el.classList.remove('hidden');
+    el.appendChild(wrap);
+  }
+  document.addEventListener('verbmaster-progress-changed', renderProgressHome);
+  renderProgressHome();
 </script>
 </body>
 </html>

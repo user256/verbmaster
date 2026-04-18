@@ -83,19 +83,46 @@
     footer.className = 'site-footer';
     footer.innerHTML = `
       <div class="footer-inner">
-        <span class="footer-brand">
-          <img class="footer-logo" src="/verbmaster.svg" alt="" width="20" height="20">
-          <span>Verbmaster</span>
-        </span>
-        <nav class="footer-nav">
-          <a href="/">Home</a>
-          <a href="/practicar.html">Practicar</a>
-          <a href="/phrasemaster.html">Phrasemaster</a>
-          <a href="/flashcards.html?max_importance=50">Top 50 flashcards</a>
-        </nav>
+        <div class="footer-progress-row">
+          <label class="nav-progress" title="Remember right/wrong on this device only. No account.">
+            <input type="checkbox" id="nav-progress-enabled" />
+            <span class="nav-progress-label">Track progress</span>
+            <span id="nav-progress-due" class="nav-progress-due hidden" aria-label="cards due for review"></span>
+          </label>
+          <label class="nav-progress nav-weak-spot" title="Shuffle decks toward verbs and cards you miss more often. Requires track progress.">
+            <input type="checkbox" id="nav-weak-spot-enabled" disabled />
+            <span class="nav-progress-label">Weak spot</span>
+          </label>
+        </div>
+        <div class="footer-bottom">
+          <span class="footer-brand">
+            <img class="footer-logo" src="/verbmaster.svg" alt="" width="20" height="20">
+            <span>Verbmaster</span>
+          </span>
+          <nav class="footer-nav">
+            <a href="/">Home</a>
+            <a href="/practicar.html">Practicar</a>
+            <a href="/phrasemaster.html">Phrasemaster</a>
+            <a href="/flashcards.html?max_importance=50">Top 50 flashcards</a>
+          </nav>
+        </div>
       </div>
     `;
     document.body.appendChild(footer);
+    const progressCb = document.getElementById('nav-progress-enabled');
+    const weakCb = document.getElementById('nav-weak-spot-enabled');
+    if (progressCb && window.VerbmasterProgress) {
+      progressCb.checked = window.VerbmasterProgress.enabled();
+      progressCb.addEventListener('change', () => {
+        window.VerbmasterProgress.setEnabled(progressCb.checked);
+      });
+    }
+    if (weakCb && window.VerbmasterProgress) {
+      weakCb.addEventListener('change', () => {
+        window.VerbmasterProgress.setWeakSpotEnabled(weakCb.checked);
+      });
+    }
+    if (window.VerbmasterProgress) window.VerbmasterProgress.refreshNav();
   }
 
   if (document.readyState === 'loading') {

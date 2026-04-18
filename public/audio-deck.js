@@ -97,7 +97,9 @@ function mountAudioDeck(container, allSentences) {
   }
 
   function resetRound(sentences = filteredSentences()) {
-    deck = shuffle([...sentences]);
+    deck = window.VerbmasterProgress?.weakSpotEnabled?.() && window.VerbmasterProgress?.enabled?.()
+      ? window.VerbmasterProgress.weakBiasedShuffleSentences([...sentences])
+      : shuffle([...sentences]);
     idx = 0;
     correct = 0;
     errors = [];
@@ -158,8 +160,13 @@ function mountAudioDeck(container, allSentences) {
   }
 
   function advance(wasRight) {
-    if (!wasRight) errors.push(deck[idx]);
+    const cur = deck[idx];
+    if (!wasRight) errors.push(cur);
     else correct++;
+    if (window.VerbmasterProgress?.enabled()) {
+      window.VerbmasterProgress.recordAudioSentence(cur, wasRight);
+      window.VerbmasterProgress.touchLast(location.href, document.title);
+    }
     idx++;
     if (idx >= deck.length) { endRound(); return; }
     showCard();

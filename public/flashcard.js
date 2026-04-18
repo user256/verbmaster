@@ -33,6 +33,13 @@ function shuffle(arr) {
   return a;
 }
 
+function deckShuffle(allCards) {
+  if (window.VerbmasterProgress?.weakSpotEnabled?.() && window.VerbmasterProgress?.enabled?.()) {
+    return window.VerbmasterProgress.weakBiasedShuffleCards(allCards);
+  }
+  return shuffle(allCards);
+}
+
 function mountFlashcards(container, allCards) {
   if (!allCards.length) {
     container.innerHTML = `
@@ -48,7 +55,7 @@ function mountFlashcards(container, allCards) {
     return;
   }
 
-  let deck = shuffle(allCards);
+  let deck = deckShuffle(allCards);
   let idx = 0;
   let errors = [];
   let correct = 0;
@@ -223,8 +230,13 @@ function mountFlashcards(container, allCards) {
   }
 
   function advance(wasRight) {
-    if (!wasRight) errors.push(deck[idx]);
+    const cur = deck[idx];
+    if (!wasRight) errors.push(cur);
     else correct++;
+    if (window.VerbmasterProgress?.enabled()) {
+      window.VerbmasterProgress.recordFlashcard(cur, wasRight);
+      window.VerbmasterProgress.touchLast(location.href, document.title);
+    }
     idx++;
     if (idx >= deck.length) { endRound(); return; }
     showCard();
@@ -236,7 +248,7 @@ function mountFlashcards(container, allCards) {
   btnWrong.addEventListener('click', () => advance(false));
 
   replayBtn.addEventListener('click', () => {
-    deck = shuffle(allCards);
+    deck = deckShuffle(allCards);
     idx = 0; errors = []; correct = 0; errorMode = false;
     roundEnd.classList.add('hidden');
     card.classList.remove('hidden');
@@ -247,7 +259,7 @@ function mountFlashcards(container, allCards) {
   });
 
   fixBtn.addEventListener('click', () => {
-    deck = shuffle(errors);
+    deck = deckShuffle(errors);
     idx = 0; errors = []; correct = 0; errorMode = true;
     roundEnd.classList.add('hidden');
     card.classList.remove('hidden');

@@ -26,9 +26,19 @@ function parseList(value) {
   return (value || '').split(',').map(v => v.trim()).filter(Boolean);
 }
 
-function offlineVerbs(data, { maxImportance = null, minImportance = null, limit = 500, offset = 0, q = '' } = {}) {
+function offlineVerbs(data, { maxImportance = null, minImportance = null, limit = 500, offset = 0, q = '', all = false } = {}) {
   const query = q.trim().toLowerCase();
   let rows = data.verbs;
+
+  if (all) {
+    if (query) {
+      rows = rows.filter(v =>
+        v.infinitive.toLowerCase().includes(query) ||
+        String(v.meaning || '').toLowerCase().includes(query)
+      );
+    }
+    return rows.slice(offset);
+  }
 
   if (query) {
     rows = rows.filter(v =>

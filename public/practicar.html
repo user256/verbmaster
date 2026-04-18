@@ -65,6 +65,7 @@
 </head>
 <body>
 
+<script src="/progress-store.js"></script>
 <script src="/nav.js" data-back="/" data-back-label="← All verbs"></script>
 
 <main style="max-width:1100px">
@@ -83,6 +84,27 @@
 <script src="/flashcard.js"></script>
 <script src="/conjugation-game.js"></script>
 <script>
+  function shuffle(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function shuffleVerbsBias(rows) {
+    return window.VerbmasterProgress?.weakBiasedShuffleVerbRows
+      ? window.VerbmasterProgress.weakBiasedShuffleVerbRows(rows)
+      : shuffle(rows);
+  }
+
+  function shuffleInfBias(list) {
+    return window.VerbmasterProgress?.weakBiasedShuffleInfinitives
+      ? window.VerbmasterProgress.weakBiasedShuffleInfinitives(list)
+      : shuffle(list);
+  }
+
   // ── Build sidebar ──────────────────────────────────────────────
   const sidebar = document.getElementById('sidebar');
   const groups = [...new Set(PRACTICE_SETS.map(s => s.group))];
@@ -148,6 +170,8 @@
       </div>
     `;
 
+    if (set.verbs) renderLimitControl(set);
+
     // tab switching
     content.querySelectorAll('.tab-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -157,7 +181,6 @@
         content.querySelector(`#tab-${btn.dataset.tab}`).classList.remove('hidden');
         if (btn.dataset.tab === 'flashcards') {
           if (set.max_importance) renderRangeControls(set);
-          else if (set.verbs) renderLimitControl(set);
           loadFlashcards(set, 'vocab');
         }
         if (btn.dataset.tab === 'game') loadGame(set);
@@ -205,7 +228,11 @@
     mount.dataset.loaded = '1';
     let url;
     if (set.verbs) {
-      url = `/api/sentences?verbs=${encodeURIComponent(set.verbs)}&limit=200`;
+      let list = set.verbs.split(',').map(v => v.trim()).filter(Boolean);
+      const range = getRangeParams();
+      if (range.random) list = shuffleInfBias(list).slice(0, Math.min(range.random, list.length));
+      else if (range.limit) list = list.slice(0, range.limit);
+      url = `/api/sentences?verbs=${encodeURIComponent(list.join(','))}&limit=200`;
     } else {
       url = `/api/sentences?max_importance=${set.max_importance}&limit=200`;
     }
@@ -224,7 +251,12 @@
       return { min: parseInt(fromSel.value), max: parseInt(toSel.value) };
     }
     if (limitSel) {
-      return { limit: parseInt(limitSel.value) };
+      const raw = limitSel.value;
+      if (raw.startsWith('random:')) {
+        const n = parseInt(raw.slice(7), 10);
+        return { random: Number.isFinite(n) && n > 0 ? n : 10 };
+      }
+      return { limit: parseInt(raw, 10) };
     }
     return {};
   }
@@ -268,18 +300,24 @@
   function renderLimitControl(set) {
     const el = document.getElementById('fc-range');
     if (!el) return;
-    const verbCount = set.verbs.split(',').length;
+    const verbCount = set.verbs.split(',').filter(Boolean).length;
     const opts = [5, 10, 20, verbCount].filter((v, i, a) => v <= verbCount && a.indexOf(v) === i).sort((a,b)=>a-b);
     el.innerHTML = `
       <div class="fc-range-row">
         <label class="fc-opt-label">Show
           <select id="fc-range-limit">
             ${opts.map(v => `<option value="${v}"${v === verbCount ? ' selected' : ''}>${v === verbCount ? 'All' : v} verbs</option>`).join('')}
+            <option value="random:10">10 random verbs</option>
           </select>
         </label>
       </div>
     `;
     document.getElementById('fc-range-limit').addEventListener('change', () => {
+      const gameMount = document.getElementById('game-mount');
+      if (gameMount) {
+        gameMount.dataset.loaded = '';
+        gameMount.innerHTML = '';
+      }
       const activeMode = document.querySelector('.fc-mode-btn.active')?.dataset.mode || 'vocab';
       loadFlashcards(set, activeMode);
     });
@@ -295,7 +333,8 @@
       if (set.verbs) {
         const res = await fetch(`/api/verbs-list?verbs=${encodeURIComponent(set.verbs)}`);
         verbs = await res.json();
-        if (range.limit) verbs = verbs.slice(0, range.limit);
+        if (range.random) verbs = shuffleVerbsBias(verbs).slice(0, Math.min(range.random, verbs.length));
+        else if (range.limit) verbs = verbs.slice(0, range.limit);
       } else {
         const minParam = range.min && range.min > 1 ? `&min_importance=${range.min}` : '';
         const maxParam = range.max || set.max_importance;
@@ -307,8 +346,10 @@
       const tenses = mode === 'all' ? ALL_TENSES : mode;
       let url;
       if (set.verbs) {
-        let verbList = set.verbs;
-        if (range.limit) verbList = set.verbs.split(',').slice(0, range.limit).join(',');
+        let parts = set.verbs.split(',').map(v => v.trim()).filter(Boolean);
+        if (range.random) parts = shuffleInfBias(parts).slice(0, Math.min(range.random, parts.length));
+        else if (range.limit) parts = parts.slice(0, range.limit);
+        const verbList = parts.join(',');
         url = `/api/conjugations?verbs=${encodeURIComponent(verbList)}&tenses=${tenses}`;
       } else {
         const minParam = range.min && range.min > 1 ? `&min_importance=${range.min}` : '';
