@@ -165,35 +165,35 @@ function mountFlashcards(container, allCards) {
       const reverseShowOnFront = transPos === 'back' && c.meaning;
       const reverseShowOnBack = transPos === 'front' && c.meaning;
       questionHTML = `
-        <span class="fc-pronoun">${c.infinitive} — ${c.pronoun}</span>
-        ${showOnFront ? `<span class="fc-meaning">${c.meaning}</span>` : ''}
-        <span class="fc-tense">(${c.tense})</span>
+        <span class="fc-pronoun">${escapeHtml(c.infinitive)} — ${escapeHtml(c.pronoun)}</span>
+        ${showOnFront ? `<span class="fc-meaning">${escapeHtml(c.meaning)}</span>` : ''}
+        <span class="fc-tense">(${escapeHtml(c.tense)})</span>
         <span class="fc-hint">tap to flip</span>
       `;
       answerHTML = showOnBack
-        ? `<span class="fc-back-form">${c.back}</span><span class="fc-back-meaning">${c.meaning}</span>`
-        : `<span class="fc-back-form">${c.back}</span>`;
+        ? `<span class="fc-back-form">${escapeHtml(c.back)}</span><span class="fc-back-meaning">${escapeHtml(c.meaning)}</span>`
+        : `<span class="fc-back-form">${escapeHtml(c.back)}</span>`;
       reverseQuestionHTML = `
-        <span class="fc-pronoun">${c.infinitive} — ${c.pronoun}</span>
-        ${reverseShowOnFront ? `<span class="fc-meaning">${c.meaning}</span>` : ''}
-        <span class="fc-tense">(${c.tense})</span>
+        <span class="fc-pronoun">${escapeHtml(c.infinitive)} — ${escapeHtml(c.pronoun)}</span>
+        ${reverseShowOnFront ? `<span class="fc-meaning">${escapeHtml(c.meaning)}</span>` : ''}
+        <span class="fc-tense">(${escapeHtml(c.tense)})</span>
         <span class="fc-hint">tap to flip</span>
       `;
       reverseAnswerHTML = `
-        <span class="fc-back-form">${c.back}</span>
-        ${reverseShowOnBack ? `<span class="fc-back-meaning">${c.meaning}</span>` : ''}
+        <span class="fc-back-form">${escapeHtml(c.back)}</span>
+        ${reverseShowOnBack ? `<span class="fc-back-meaning">${escapeHtml(c.meaning)}</span>` : ''}
       `;
     } else {
       questionHTML = `
-        <span class="fc-pronoun" style="font-size:1.6rem">${c.pronoun}</span>
+        <span class="fc-pronoun" style="font-size:1.6rem">${escapeHtml(c.pronoun)}</span>
         <span class="fc-hint">tap to flip</span>
       `;
-      answerHTML = `<span class="fc-back-form">${c.back}</span>`;
+      answerHTML = `<span class="fc-back-form">${escapeHtml(c.back)}</span>`;
       reverseQuestionHTML = `
-        <span class="fc-pronoun" style="font-size:1.6rem">${c.back}</span>
+        <span class="fc-pronoun" style="font-size:1.6rem">${escapeHtml(c.back)}</span>
         <span class="fc-hint">tap to flip</span>
       `;
-      reverseAnswerHTML = `<span class="fc-back-form">${c.pronoun}</span>`;
+      reverseAnswerHTML = `<span class="fc-back-form">${escapeHtml(c.pronoun)}</span>`;
     }
 
     if (c.tense && reversed) {
@@ -222,8 +222,8 @@ function mountFlashcards(container, allCards) {
       roundMsg.textContent = `Round done. ${correct} correct, ${errors.length} wrong.`;
       errorList.innerHTML = '<ul>' + errors.map(c =>
         c.tense
-          ? `<li>${c.pronoun} — ${c.infinitive} (${c.tense}) → <strong>${c.back}</strong></li>`
-          : `<li>${c.pronoun} → <strong>${c.back}</strong></li>`
+          ? `<li>${escapeHtml(c.pronoun)} — ${escapeHtml(c.infinitive)} (${escapeHtml(c.tense)}) → <strong>${escapeHtml(c.back)}</strong></li>`
+          : `<li>${escapeHtml(c.pronoun)} → <strong>${escapeHtml(c.back)}</strong></li>`
       ).join('') + '</ul>';
       fixBtn.classList.remove('hidden');
     }

@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'verbmaster-v6';
+const CACHE_VERSION = 'verbmaster-v7';
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -9,6 +9,7 @@ const APP_SHELL = [
   '/style.css',
   '/nav.js',
   '/progress-store.js',
+  '/html-escape.js',
   '/flashcard.js',
   '/audio-deck.js',
   '/conjugation-game.js',

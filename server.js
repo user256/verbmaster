@@ -3,7 +3,36 @@ const Database = require('better-sqlite3');
 const path = require('path');
 
 const app = express();
+app.disable('x-powered-by');
 const db = new Database(path.join(__dirname, 'verbmaster.db'));
+
+function securityHeaders(req, res, next) {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+  next();
+}
+app.use(securityHeaders);
+
+/** @returns {string[] | null} null if parameter present but empty after parsing */
+function parseTensesQuery(raw) {
+  if (raw === undefined) return ['present', 'preterite', 'future'];
+  const tenses = String(raw).split(',').map(t => t.trim()).filter(Boolean);
+  return tenses.length ? tenses : null;
+}
+
+/** @returns {string[] | null} null if missing or empty */
+function parseVerbsQueryRequired(raw) {
+  if (raw == null || raw === '') return null;
+  const vl = String(raw).split(',').map(v => v.trim()).filter(Boolean);
+  return vl.length ? vl : null;
+}
+
+function parseVerbId(raw) {
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) ? n : null;
+}
 
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -55,8 +84,8 @@ app.get('/api/verbs', (req, res) => {
 
 // GET /api/verbs-list?verbs=ser,estar — ordered list
 app.get('/api/verbs-list', (req, res) => {
-  if (!req.query.verbs) return res.status(400).json({ error: 'provide verbs' });
-  const verbList = req.query.verbs.split(',').map(v => v.trim()).filter(Boolean);
+  const verbList = parseVerbsQueryRequired(req.query.verbs);
+  if (!verbList) return res.status(400).json({ error: 'provide verbs' });
   const ph = verbList.map(() => '?').join(',');
   const rows = db.prepare(
     `SELECT id, infinitive, meaning, importance FROM verbs WHERE infinitive IN (${ph})`
@@ -83,23 +112,25 @@ app.get('/api/verbs/:infinitive', (req, res) => {
 // GET /api/conjugations?verbs=ser,estar&tenses=present
 // GET /api/conjugations?max_importance=50&tenses=present,preterite
 app.get('/api/conjugations', (req, res) => {
-  const tenses = req.query.tenses
-    ? req.query.tenses.split(',').map(t => t.trim()).filter(Boolean)
-    : ['present', 'preterite', 'future'];
+  const tenses = parseTensesQuery(req.query.tenses);
+  if (!tenses) return res.status(400).json({ error: 'provide non-empty tenses list' });
 
   const tp = tenses.map(() => '?').join(',');
   let rows;
 
   if (req.query.verb_id) {
+    const verbId = parseVerbId(req.query.verb_id);
+    if (verbId === null) return res.status(400).json({ error: 'invalid verb_id' });
     rows = db.prepare(
       `SELECT v.infinitive, v.meaning, c.pronoun, c.tense, c.form
        FROM conjugations c JOIN verbs v ON v.id = c.verb_id
        WHERE c.verb_id = ? AND c.tense IN (${tp})
        ORDER BY c.tense, c.pronoun`
-    ).all(req.query.verb_id, ...tenses);
+    ).all(verbId, ...tenses);
 
   } else if (req.query.verbs) {
-    const vl = req.query.verbs.split(',').map(v => v.trim()).filter(Boolean);
+    const vl = parseVerbsQueryRequired(req.query.verbs);
+    if (!vl) return res.status(400).json({ error: 'provide non-empty verbs list' });
     const vp = vl.map(() => '?').join(',');
     rows = db.prepare(
       `SELECT v.infinitive, v.meaning, c.pronoun, c.tense, c.form
@@ -109,8 +140,11 @@ app.get('/api/conjugations', (req, res) => {
     ).all(...vl, ...tenses);
 
   } else if (req.query.max_importance) {
-    const maxI = parseInt(req.query.max_importance);
-    const minI = req.query.min_importance ? parseInt(req.query.min_importance) : null;
+    const maxI = parseInt(req.query.max_importance, 10);
+    if (!Number.isFinite(maxI)) return res.status(400).json({ error: 'invalid max_importance' });
+    const minI = req.query.min_importance ? parseInt(req.query.min_importance, 10) : null;
+    if (req.query.min_importance != null && req.query.min_importance !== '' && !Number.isFinite(minI))
+      return res.status(400).json({ error: 'invalid min_importance' });
     if (minI) {
       rows = db.prepare(
         `SELECT v.infinitive, v.meaning, c.pronoun, c.tense, c.form
@@ -140,11 +174,19 @@ app.get('/api/conjugations', (req, res) => {
 // GET /api/sentences?verbs=ser,estar&tenses=present
 // GET /api/sentences?max_importance=50
 app.get('/api/sentences', (req, res) => {
-  const limit  = Math.min(parseInt(req.query.limit) || 200, 500);
-  const minImportance = req.query.min_importance ? parseInt(req.query.min_importance) : null;
-  const tenses = req.query.tenses
-    ? req.query.tenses.split(',').map(t => t.trim()).filter(Boolean)
-    : null;
+  const limitRaw = parseInt(req.query.limit, 10);
+  const limit  = Math.min(Number.isFinite(limitRaw) ? limitRaw : 200, 500);
+  const minImportanceRaw = req.query.min_importance ? parseInt(req.query.min_importance, 10) : null;
+  const minImportance = minImportanceRaw != null && Number.isFinite(minImportanceRaw) ? minImportanceRaw : null;
+  if (req.query.min_importance != null && req.query.min_importance !== '' && minImportance === null)
+    return res.status(400).json({ error: 'invalid min_importance' });
+
+  let tenses = null;
+  if (req.query.tenses !== undefined) {
+    const parsed = String(req.query.tenses).split(',').map(t => t.trim()).filter(Boolean);
+    if (!parsed.length) return res.status(400).json({ error: 'provide non-empty tenses list' });
+    tenses = parsed;
+  }
 
   const tp = tenses ? tenses.map(() => '?').join(',') : null;
   const tenseClause = tenses ? `AND s.tense IN (${tp})` : '';
@@ -153,16 +195,19 @@ app.get('/api/sentences', (req, res) => {
   let rows;
 
   if (req.query.verb_id) {
+    const verbId = parseVerbId(req.query.verb_id);
+    if (verbId === null) return res.status(400).json({ error: 'invalid verb_id' });
     rows = db.prepare(
       `SELECT v.infinitive, v.meaning, s.sentence_es, s.sentence_en, s.tense,
               s.pronoun, s.conjugated_form, s.importance, s.audio_hash
        FROM example_sentences s JOIN verbs v ON v.id = s.verb_id
        WHERE s.verb_id = ? ${tenseClause}
        ORDER BY s.importance ASC NULLS LAST LIMIT ?`
-    ).all(req.query.verb_id, ...tenseArgs, limit);
+    ).all(verbId, ...tenseArgs, limit);
 
   } else if (req.query.verbs) {
-    const vl = req.query.verbs.split(',').map(v => v.trim()).filter(Boolean);
+    const vl = parseVerbsQueryRequired(req.query.verbs);
+    if (!vl) return res.status(400).json({ error: 'provide non-empty verbs list' });
     const vp = vl.map(() => '?').join(',');
     rows = db.prepare(
       `SELECT v.infinitive, v.meaning, s.sentence_es, s.sentence_en, s.tense,
@@ -173,8 +218,10 @@ app.get('/api/sentences', (req, res) => {
     ).all(...vl, ...tenseArgs, limit);
 
   } else if (req.query.max_importance) {
+    const maxImp = parseInt(req.query.max_importance, 10);
+    if (!Number.isFinite(maxImp)) return res.status(400).json({ error: 'invalid max_importance' });
     const importanceClause = minImportance ? 'v.importance >= ? AND v.importance <= ?' : 'v.importance <= ?';
-    const importanceArgs = minImportance ? [minImportance, parseInt(req.query.max_importance)] : [parseInt(req.query.max_importance)];
+    const importanceArgs = minImportance ? [minImportance, maxImp] : [maxImp];
     rows = db.prepare(
       `SELECT v.infinitive, v.meaning, s.sentence_es, s.sentence_en, s.tense,
               s.pronoun, s.conjugated_form, s.importance, s.audio_hash
@@ -195,12 +242,15 @@ app.get('/api/sentences', (req, res) => {
 // GET /api/conversations?verbs=ser,estar
 // GET /api/conversations?max_importance=50
 app.get('/api/conversations', (req, res) => {
-  const minImportance = req.query.min_importance ? parseInt(req.query.min_importance) : null;
+  const minImportanceRaw = req.query.min_importance ? parseInt(req.query.min_importance, 10) : null;
+  const minImportance = minImportanceRaw != null && Number.isFinite(minImportanceRaw) ? minImportanceRaw : null;
+  if (req.query.min_importance != null && req.query.min_importance !== '' && minImportance === null)
+    return res.status(400).json({ error: 'invalid min_importance' });
   let rows;
 
   if (req.query.verbs) {
-    const vl = req.query.verbs.split(',').map(v => v.trim()).filter(Boolean);
-    if (!vl.length) return res.json([]);
+    const vl = parseVerbsQueryRequired(req.query.verbs);
+    if (!vl) return res.status(400).json({ error: 'provide non-empty verbs list' });
     const vp = vl.map(() => '?').join(',');
     rows = db.prepare(
       `SELECT v.infinitive, v.meaning, c.register, c.turn_order, c.speaker, c.phrase_es, c.phrase_en
@@ -210,8 +260,10 @@ app.get('/api/conversations', (req, res) => {
     ).all(...vl);
 
   } else if (req.query.max_importance) {
+    const maxImp = parseInt(req.query.max_importance, 10);
+    if (!Number.isFinite(maxImp)) return res.status(400).json({ error: 'invalid max_importance' });
     const importanceClause = minImportance ? 'v.importance >= ? AND v.importance <= ?' : 'v.importance <= ?';
-    const importanceArgs = minImportance ? [minImportance, parseInt(req.query.max_importance)] : [parseInt(req.query.max_importance)];
+    const importanceArgs = minImportance ? [minImportance, maxImp] : [maxImp];
     rows = db.prepare(
       `SELECT v.infinitive, v.meaning, c.register, c.turn_order, c.speaker, c.phrase_es, c.phrase_en
        FROM conversations c JOIN verbs v ON v.id = c.verb_id
@@ -220,12 +272,14 @@ app.get('/api/conversations', (req, res) => {
     ).all(...importanceArgs);
 
   } else if (req.query.verb_id) {
+    const verbId = parseVerbId(req.query.verb_id);
+    if (verbId === null) return res.status(400).json({ error: 'invalid verb_id' });
     rows = db.prepare(
       `SELECT v.infinitive, v.meaning, c.register, c.turn_order, c.speaker, c.phrase_es, c.phrase_en
        FROM conversations c JOIN verbs v ON v.id = c.verb_id
        WHERE v.id = ?
        ORDER BY c.register, c.turn_order`
-    ).all(req.query.verb_id);
+    ).all(verbId);
 
   } else {
     return res.status(400).json({ error: 'provide verb_id, verbs, or max_importance' });

@@ -143,8 +143,8 @@ function mountConjugationGame(container, allSentences) {
     sentenceEl.textContent = blank;
     translationEl.textContent = hideEnCb.checked ? '' : `(${s.sentence_en})`;
     verbHintEl.innerHTML = hideInfCb.checked
-      ? `<span class="cg-tense-badge">${s.tense}</span>`
-      : `<span class="cg-inf">${s.infinitive}</span> <span class="cg-tense-badge">${s.tense}</span>`;
+      ? `<span class="cg-tense-badge">${escapeHtml(s.tense)}</span>`
+      : `<span class="cg-inf">${escapeHtml(s.infinitive)}</span> <span class="cg-tense-badge">${escapeHtml(s.tense)}</span>`;
     answerEl.value = '';
     resultEl.innerHTML = '';
     answerEl.focus();
@@ -167,7 +167,7 @@ function mountConjugationGame(container, allSentences) {
       resultEl.innerHTML = '<span class="cg-correct">✓ Correct</span>';
       score++;
     } else {
-      resultEl.innerHTML = `<span class="cg-wrong">✗ Incorrect — correct answer: <strong>${correctAnswer}</strong></span>`;
+      resultEl.innerHTML = `<span class="cg-wrong">✗ Incorrect — correct answer: <strong>${escapeHtml(correctAnswer)}</strong></span>`;
       errorCount++;
       wrongItems.push(deck[idx]);
     }
@@ -206,7 +206,7 @@ function mountConjugationGame(container, allSentences) {
     summaryMsg.textContent = `Round complete — ${score} correct, ${errorCount} wrong out of ${deck.length}.`;
     if (wrongItems.length) {
       errorListEl.innerHTML = '<ul class="cg-error-list">' +
-        wrongItems.map(s => `<li>${s.sentence_es} → <strong>${s.conjugated_form}</strong></li>`).join('') +
+        wrongItems.map(s => `<li>${escapeHtml(s.sentence_es)} → <strong>${escapeHtml(s.conjugated_form)}</strong></li>`).join('') +
         '</ul>';
     } else {
       errorListEl.innerHTML = '';
