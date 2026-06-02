@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mini lesson — Verbmaster</title>
+  <link rel="icon" href="/verbmaster.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#1b61c9">
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .ml-back { font-size: 14px; margin-bottom: 8px; display: inline-block; }
+    .ml-head { margin-bottom: 8px; }
+    .ml-topic { color: var(--weak); font-size: 15px; margin-bottom: 20px; }
+    .ml-rules { font-size: 13px; color: var(--weak); margin-bottom: 28px; line-height: 1.5; }
+    .ml-stage { margin-bottom: 36px; }
+    .ml-stage-title { font-size: 17px; font-weight: 600; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+    .ml-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 15px; }
+    .ml-row:last-child { border-bottom: none; }
+    .ml-es { font-weight: 500; color: var(--navy); }
+    .ml-en { color: var(--weak); }
+    .ml-source { margin-top: 28px; font-size: 14px; }
+    .ml-err { color: var(--wrong); font-size: 14px; }
+    @media (max-width: 560px) {
+      .ml-row { grid-template-columns: 1fr; gap: 4px; }
+    }
+  </style>
+</head>
+<body>
+
+<script src="/progress-store.js"></script>
+<script src="/nav.js" data-back="/mini-lessons.html" data-back-label="← All mini lessons"></script>
+
+<main style="max-width: 720px">
+  <div id="ml-mount"><p style="color:var(--weak);font-size:14px">Loading…</p></div>
+</main>
+
+<script src="/html-escape.js"></script>
+<script>
+  const params = new URLSearchParams(location.search);
+  const packId = params.get('pack');
+  const mount = document.getElementById('ml-mount');
+
+  const STAGE_LABELS = {
+    stage_1_verbs: 'Stage 1 — Verbs',
+    stage_2_phrases: 'Stage 2 — Phrases',
+    stage_3_sentences: 'Stage 3 — Sentences',
+  };
+
+  function stageOrder(a, b) {
+    const order = ['stage_1_verbs', 'stage_2_phrases', 'stage_3_sentences'];
+    return order.indexOf(a) - order.indexOf(b);
+  }
+
+  function renderPack(p) {
+    const meta = p.lesson_meta || {};
+    const rules = p.progression_rules || {};
+    const ruleBits = [];
+    if (rules.unlock_stage_2_after_stage_1) ruleBits.push('Unlock phrases after verbs.');
+    if (rules.unlock_stage_3_after_stage_2) ruleBits.push('Unlock sentences after phrases.');
+    const stages = p.stages || {};
+    const keys = Object.keys(stages).sort(stageOrder);
+
+    let sourceLink = '';
+    if (meta.source_lesson) {
+      const src = String(meta.source_lesson).replace(/^\/+/, '');
+      if (src.startsWith('lessons/') && !src.includes('..')) {
+        sourceLink = `<p class="ml-source"><a href="/${escapeHtml(src)}">Source lesson (markdown)</a></p>`;
+      }
+    }
+
+    mount.innerHTML = `
+      <a class="ml-back" href="/mini-lessons.html">← All mini lessons</a>
+      <div class="section-label">Mini lesson</div>
+      <h1 class="section-title ml-head">${escapeHtml(meta.title || p.title_line || p.id)}</h1>
+      <p class="ml-topic">${escapeHtml([meta.topic, meta.order != null ? 'Lesson ' + meta.order : ''].filter(Boolean).join(' · '))}</p>
+      ${ruleBits.length ? `<p class="ml-rules">${ruleBits.map(escapeHtml).join(' ')}</p>` : ''}
+      ${keys.map(key => {
+        const label = STAGE_LABELS[key] || key.replace(/_/g, ' ');
+        const items = stages[key] || [];
+        const rows = items.map(it =>
+          `<div class="ml-row"><div class="ml-es">${escapeHtml(it.es)}</div><div class="ml-en">${escapeHtml(it.en)}</div></div>`
+        ).join('');
+        return `<section class="ml-stage"><h2 class="ml-stage-title">${escapeHtml(label)}</h2>${rows || '<p class="ml-topic">No items.</p>'}</section>`;
+      }).join('')}
+      ${sourceLink}
+    `;
+    document.title = `${meta.title || p.id} — Mini lesson — Verbmaster`;
+  }
+
+  async function load() {
+    if (!packId) {
+      mount.innerHTML = '<p class="ml-err">Missing <code>pack</code> in the URL. <a href="/mini-lessons.html">Browse mini lessons</a>.</p>';
+      return;
+    }
+    try {
+      const res = await fetch('/api/mini-lessons/' + encodeURIComponent(packId));
+      if (res.status === 404) {
+        mount.innerHTML = '<p class="ml-err">Pack not found. <a href="/mini-lessons.html">Back to list</a>.</p>';
+        return;
+      }
+      if (!res.ok) throw new Error('bad response');
+      renderPack(await res.json());
+    } catch {
+      mount.innerHTML = '<p class="ml-err">Could not load this pack.</p>';
+    }
+  }
+  load();
+</script>
+</body>
+</html>

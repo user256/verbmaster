@@ -1,7 +1,9 @@
-const CACHE_VERSION = 'verbmaster-v7';
+const CACHE_VERSION = 'verbmaster-v8';
 const APP_SHELL = [
   '/',
   '/index.html',
+  '/mini-lessons.html',
+  '/mini-lesson.html',
   '/flashcards.html',
   '/verb.html',
   '/practicar.html',

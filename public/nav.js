@@ -28,6 +28,7 @@
     </div>
     <div class="nav-links" id="nav-links">
       <a class="nav-link" href="/">Home</a>
+      <a class="nav-link" href="/mini-lessons.html">Mini lessons</a>
       <a class="nav-link" href="/practicar.html">Practicar</a>
       <a class="nav-link" href="/phrasemaster.html">Phrasemaster</a>
     </div>
@@ -44,8 +45,10 @@
 
   // highlight active link
   nav.querySelectorAll('.nav-link').forEach(a => {
-    if (a.getAttribute('href') === location.pathname ||
-        (location.pathname === '/' && a.getAttribute('href') === '/')) {
+    const href = a.getAttribute('href');
+    if (href === location.pathname ||
+        (location.pathname === '/' && href === '/') ||
+        (href === '/mini-lessons.html' && (location.pathname === '/mini-lessons.html' || location.pathname === '/mini-lesson.html'))) {
       a.classList.add('active');
     }
   });

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mini lessons — Verbmaster</title>
+  <link rel="icon" href="/verbmaster.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#1b61c9">
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .ml-intro { color: var(--weak); font-size: 15px; max-width: 52ch; margin-bottom: 24px; line-height: 1.45; }
+    .ml-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+    .ml-card {
+      display: block; padding: 20px; background: var(--white); border: 1px solid var(--border);
+      border-radius: var(--r-md); box-shadow: var(--shadow-soft); color: var(--navy);
+      text-decoration: none; transition: border-color 0.12s, box-shadow 0.12s;
+    }
+    .ml-card:hover { border-color: rgba(27,97,201,0.35); box-shadow: var(--shadow-blue); text-decoration: none; }
+    .ml-card-title { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+    .ml-card-meta { font-size: 13px; color: var(--weak); }
+    .ml-empty { color: var(--weak); font-size: 14px; }
+    .ml-err { color: var(--wrong); font-size: 14px; }
+  </style>
+</head>
+<body>
+
+<script src="/progress-store.js"></script>
+<script src="/nav.js"></script>
+
+<main style="max-width: 960px">
+  <div class="section-label">Guided sequences</div>
+  <h1 class="section-title">Mini lessons</h1>
+  <p class="ml-intro">Short themed packs: verbs, then phrases, then full sentences. Open a pack to study on the web.</p>
+  <div id="ml-mount"><p class="ml-empty">Loading…</p></div>
+</main>
+
+<script src="/html-escape.js"></script>
+<script>
+  const mount = document.getElementById('ml-mount');
+
+  async function load() {
+    try {
+      const res = await fetch('/api/mini-lessons');
+      if (!res.ok) throw new Error('bad response');
+      const data = await res.json();
+      const packs = data.packs || [];
+      if (!packs.length) {
+        mount.innerHTML = '<p class="ml-empty">No mini-lesson packs yet.</p>';
+        return;
+      }
+      mount.innerHTML = '<div class="ml-grid">' + packs.map(p => `
+        <a class="ml-card" href="/mini-lesson.html?pack=${encodeURIComponent(p.id)}">
+          <div class="ml-card-title">${escapeHtml(p.title)}</div>
+          <div class="ml-card-meta">${escapeHtml(p.topic || '')}${p.topic && p.order != null ? ' · ' : ''}${p.order != null ? 'Lesson ' + escapeHtml(String(p.order)) : ''}</div>
+        </a>
+      `).join('') + '</div>';
+    } catch {
+      mount.innerHTML = '<p class="ml-err">Could not load mini lessons. Check that the app is running.</p>';
+    }
+  }
+  load();
+</script>
+</body>
+</html>

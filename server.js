@@ -1,6 +1,8 @@
 const express = require('express');
+const fs = require('fs');
 const Database = require('better-sqlite3');
 const path = require('path');
+const miniLessonPacks = require('./mini-lesson-packs');
 
 const app = express();
 app.disable('x-powered-by');
@@ -35,6 +37,11 @@ function parseVerbId(raw) {
 }
 
 app.use(express.static(path.join(__dirname, 'public')));
+
+const lessonsDir = path.join(__dirname, 'lessons');
+if (fs.existsSync(lessonsDir)) {
+  app.use('/lessons', express.static(lessonsDir));
+}
 
 // Serve MP3s — Docker: /app/mp3s volume, local dev: fallback to Hugo static dir
 app.use('/mp3s', express.static(
@@ -320,6 +327,22 @@ app.get('/api/topics/:slug', (req, res) => {
   ).all(topic.id);
 
   res.json({ ...topic, phrases });
+});
+
+// ── Mini lessons (markdown packs under mini-lessons/packs/) ────────────────
+
+app.get('/api/mini-lessons', (req, res) => {
+  try {
+    res.json({ packs: miniLessonPacks.listPacks() });
+  } catch {
+    res.status(500).json({ error: 'failed to list mini-lessons' });
+  }
+});
+
+app.get('/api/mini-lessons/:packId', (req, res) => {
+  const pack = miniLessonPacks.getPack(req.params.packId);
+  if (!pack) return res.status(404).json({ error: 'not found' });
+  res.json(pack);
 });
 
 // ── Start ──────────────────────────────────────────────────────────────────
