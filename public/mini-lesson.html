@@ -13,17 +13,26 @@
     .ml-back { font-size: 14px; margin-bottom: 8px; display: inline-block; }
     .ml-head { margin-bottom: 8px; }
     .ml-topic { color: var(--weak); font-size: 15px; margin-bottom: 20px; }
-    .ml-rules { font-size: 13px; color: var(--weak); margin-bottom: 28px; line-height: 1.5; }
-    .ml-stage { margin-bottom: 36px; }
-    .ml-stage-title { font-size: 17px; font-weight: 600; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
-    .ml-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 15px; }
+    .ml-stage-count { color: var(--weak); font-weight: 400; font-size: 13px; }
+    .ml-study-hint { font-size: 13px; color: var(--weak); margin: 0 0 18px; line-height: 1.5; }
+    .ml-source { margin-top: 28px; font-size: 14px; }
+    .ml-err { color: var(--wrong); font-size: 14px; }
+
+    /* Collapsible reference word list */
+    .ml-list-toggle {
+      margin-top: 28px; background: none; border: none; padding: 0;
+      color: var(--link, #1b61c9); font-size: 14px; cursor: pointer; font: inherit;
+    }
+    .ml-list-toggle:hover { text-decoration: underline; }
+    .ml-list { margin-top: 16px; }
+    .ml-stage { margin-bottom: 28px; }
+    .ml-stage-title { font-size: 16px; font-weight: 600; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+    .ml-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 20px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 15px; }
     .ml-row:last-child { border-bottom: none; }
     .ml-es { font-weight: 500; color: var(--navy); }
     .ml-en { color: var(--weak); }
-    .ml-source { margin-top: 28px; font-size: 14px; }
-    .ml-err { color: var(--wrong); font-size: 14px; }
     @media (max-width: 560px) {
-      .ml-row { grid-template-columns: 1fr; gap: 4px; }
+      .ml-row { grid-template-columns: 1fr; gap: 2px; }
     }
   </style>
 </head>
@@ -37,30 +46,32 @@
 </main>
 
 <script src="/html-escape.js"></script>
+<script src="/mini-lesson-study.js"></script>
 <script>
   const params = new URLSearchParams(location.search);
   const packId = params.get('pack');
   const mount = document.getElementById('ml-mount');
 
   const STAGE_LABELS = {
+    stage_1_verbs: 'Verbs',
+    stage_2_phrases: 'Phrases',
+    stage_3_sentences: 'Sentences',
+  };
+  const STAGE_FULL_LABELS = {
     stage_1_verbs: 'Stage 1 — Verbs',
     stage_2_phrases: 'Stage 2 — Phrases',
     stage_3_sentences: 'Stage 3 — Sentences',
   };
+  const STAGE_ORDER = ['stage_1_verbs', 'stage_2_phrases', 'stage_3_sentences'];
 
   function stageOrder(a, b) {
-    const order = ['stage_1_verbs', 'stage_2_phrases', 'stage_3_sentences'];
-    return order.indexOf(a) - order.indexOf(b);
+    return STAGE_ORDER.indexOf(a) - STAGE_ORDER.indexOf(b);
   }
 
   function renderPack(p) {
     const meta = p.lesson_meta || {};
-    const rules = p.progression_rules || {};
-    const ruleBits = [];
-    if (rules.unlock_stage_2_after_stage_1) ruleBits.push('Unlock phrases after verbs.');
-    if (rules.unlock_stage_3_after_stage_2) ruleBits.push('Unlock sentences after phrases.');
     const stages = p.stages || {};
-    const keys = Object.keys(stages).sort(stageOrder);
+    const keys = Object.keys(stages).filter(k => (stages[k] || []).length).sort(stageOrder);
 
     let sourceLink = '';
     if (meta.source_lesson) {
@@ -70,23 +81,71 @@
       }
     }
 
+    // Stage picker buttons (reuse fc-modes styling). "All" combines every stage in order.
+    const pickerBtns = keys.map((key, i) =>
+      `<button class="fc-mode-btn${i === 0 ? ' active' : ''}" data-stage="${escapeHtml(key)}">${escapeHtml(STAGE_LABELS[key] || key)} <span class="ml-stage-count">${(stages[key] || []).length}</span></button>`
+    ).join('');
+    const allCount = keys.reduce((n, k) => n + (stages[k] || []).length, 0);
+    const allBtn = keys.length > 1
+      ? `<button class="fc-mode-btn" data-stage="__all__">All <span class="ml-stage-count">${allCount}</span></button>`
+      : '';
+
     mount.innerHTML = `
       <a class="ml-back" href="/mini-lessons.html">← All mini lessons</a>
       <div class="section-label">Mini lesson</div>
       <h1 class="section-title ml-head">${escapeHtml(meta.title || p.title_line || p.id)}</h1>
       <p class="ml-topic">${escapeHtml([meta.topic, meta.order != null ? 'Lesson ' + meta.order : ''].filter(Boolean).join(' · '))}</p>
-      ${ruleBits.length ? `<p class="ml-rules">${ruleBits.map(escapeHtml).join(' ')}</p>` : ''}
-      ${keys.map(key => {
-        const label = STAGE_LABELS[key] || key.replace(/_/g, ' ');
-        const items = stages[key] || [];
-        const rows = items.map(it =>
-          `<div class="ml-row"><div class="ml-es">${escapeHtml(it.es)}</div><div class="ml-en">${escapeHtml(it.en)}</div></div>`
-        ).join('');
-        return `<section class="ml-stage"><h2 class="ml-stage-title">${escapeHtml(label)}</h2>${rows || '<p class="ml-topic">No items.</p>'}</section>`;
-      }).join('')}
+      <p class="ml-study-hint">Tap a card to flip. Each stage runs Spanish → English first, then English → Spanish. Use the buttons below to mark yourself.</p>
+      <div class="fc-modes" id="ml-stage-picker">${pickerBtns}${allBtn}</div>
+      <div id="ml-study"></div>
+      <button class="ml-list-toggle" id="ml-list-toggle" aria-expanded="false">Show word list ▸</button>
+      <div class="ml-list hidden" id="ml-list">
+        ${keys.map(key => {
+          const items = stages[key] || [];
+          const rows = items.map(it =>
+            `<div class="ml-row"><div class="ml-es">${escapeHtml(it.es)}</div><div class="ml-en">${escapeHtml(it.en)}</div></div>`
+          ).join('');
+          return `<section class="ml-stage"><h2 class="ml-stage-title">${escapeHtml(STAGE_FULL_LABELS[key] || key)}</h2>${rows}</section>`;
+        }).join('')}
+      </div>
       ${sourceLink}
     `;
     document.title = `${meta.title || p.id} — Mini lesson — Verbmaster`;
+
+    const studyEl = document.getElementById('ml-study');
+
+    function itemsForStage(stageKey) {
+      if (stageKey === '__all__') {
+        return keys.flatMap(k => stages[k] || []);
+      }
+      return stages[stageKey] || [];
+    }
+
+    function startStage(stageKey) {
+      mountMiniLessonStudy(studyEl, itemsForStage(stageKey), { packId: p.id, stageKey });
+    }
+
+    const picker = document.getElementById('ml-stage-picker');
+    picker.querySelectorAll('.fc-mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        picker.querySelectorAll('.fc-mode-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        startStage(btn.dataset.stage);
+      });
+    });
+
+    // Word-list disclosure
+    const listToggle = document.getElementById('ml-list-toggle');
+    const list = document.getElementById('ml-list');
+    listToggle.addEventListener('click', () => {
+      const open = list.classList.toggle('hidden') === false;
+      listToggle.setAttribute('aria-expanded', String(open));
+      listToggle.textContent = open ? 'Hide word list ▾' : 'Show word list ▸';
+    });
+
+    // Kick off with the first stage.
+    if (keys.length) startStage(keys[0]);
+    else studyEl.innerHTML = '<p class="ml-err">This pack has no items to study.</p>';
   }
 
   async function load() {

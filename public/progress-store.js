@@ -107,6 +107,7 @@
 
   function cardIdFlashcard(card) {
     if (!card) return null;
+    if (card.statKey) return card.statKey;
     if (card.tense) {
       return `conj:${card.infinitive}:${card.pronoun}:${card.tense}:${card.back}`;
     }
