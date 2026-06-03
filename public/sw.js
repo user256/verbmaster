@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'verbmaster-v9';
+const CACHE_VERSION = 'verbmaster-v10';
 const APP_SHELL = [
   '/',
   '/index.html',
