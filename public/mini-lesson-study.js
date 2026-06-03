@@ -1,7 +1,11 @@
 // Interactive study deck for mini-lesson packs.
-// Reuses the app's flashcard CSS (fc-*) for a consistent look, but runs its own
-// two-pass round: every card is shown Spanish -> English first, then the same
-// cards English -> Spanish (production practice), then the round ends.
+// Reuses the app's flashcard CSS (fc-*) for a consistent look.
+//
+// A stage is studied in two SEPARATE phases:
+//   Phase 1: Spanish -> English. When the deck is done, an interstitial lets the
+//            user replay Spanish -> English, or continue to English -> Spanish.
+//   Phase 2: English -> Spanish (production). Ends with a round summary; the user
+//            can replay the whole stage (back to phase 1) or review errors.
 //
 // mountMiniLessonStudy(container, items, opts)
 //   items: array of { es, en }
@@ -21,22 +25,23 @@
     return a;
   }
 
-  // Build the two passes: pass 0 = ES->EN, pass 1 = EN->ES.
-  // Each entry carries everything the renderer and progress store need.
-  function buildPass(items, packId, stageKey, dir) {
+  // dir: 'es2en' shows the Spanish prompt; 'en2es' shows the English prompt.
+  function buildCards(items, packId, stageKey, dir) {
     return items
       .filter(it => it.es && it.en)
       .map(it => ({
-        // dir: 'es2en' shows Spanish prompt; 'en2es' shows English prompt
         front: dir === 'es2en' ? it.es : it.en,
         back:  dir === 'es2en' ? it.en : it.es,
         dir,
         // Namespaced progress key — keeps these out of the verb/conjugation stats.
         // Keyed on the Spanish side so both directions of one item share history.
         statKey: `ml:${packId}:${stageKey}:${it.es}`,
-        // recordFlashcard reads .pronoun for the (unused) fallback key; harmless.
         pronoun: it.es,
       }));
+  }
+
+  function dirLabel(dir) {
+    return dir === 'es2en' ? 'ES → EN' : 'EN → ES';
   }
 
   function mountMiniLessonStudy(container, items, opts) {
@@ -77,10 +82,7 @@
         <div id="mls-round-end" class="fc-round-end hidden">
           <p id="mls-round-msg"></p>
           <div id="mls-error-list"></div>
-          <div class="round-actions">
-            <button id="mls-replay">Play again</button>
-            <button id="mls-fix" class="hidden">Review errors</button>
-          </div>
+          <div class="round-actions" id="mls-round-actions"></div>
         </div>
       </div>`;
 
@@ -92,8 +94,7 @@
     const roundEnd  = container.querySelector('#mls-round-end');
     const roundMsg  = container.querySelector('#mls-round-msg');
     const errorList = container.querySelector('#mls-error-list');
-    const replayBtn = container.querySelector('#mls-replay');
-    const fixBtn    = container.querySelector('#mls-fix');
+    const roundActions = container.querySelector('#mls-round-actions');
     const statDir     = container.querySelector('#mls-dir');
     const statCorrect = container.querySelector('#mls-correct');
     const statWrong   = container.querySelector('#mls-wrong');
@@ -103,16 +104,10 @@
     let idx = 0;
     let correct = 0;
     let errors = [];
+    let phase = 'es2en'; // 'es2en' | 'en2es'
 
-    // Fresh two-pass deck: all cards ES->EN, then all cards EN->ES.
-    function freshDeck() {
-      const pass1 = shuffleDeck(buildPass(usable, packId, stageKey, 'es2en'));
-      const pass2 = shuffleDeck(buildPass(usable, packId, stageKey, 'en2es'));
-      return [...pass1, ...pass2];
-    }
-
-    function dirLabel(dir) {
-      return dir === 'es2en' ? 'ES → EN' : 'EN → ES';
+    function freshPass(dir) {
+      return shuffleDeck(buildCards(usable, packId, stageKey, dir));
     }
 
     function updateStats() {
@@ -138,23 +133,60 @@
       updateStats();
     }
 
-    function endRound() {
+    function showCards() {
+      card.classList.remove('hidden');
+      btnRight.classList.remove('hidden');
+      btnWrong.classList.remove('hidden');
+      roundEnd.classList.add('hidden');
+    }
+
+    function hideCards() {
       card.classList.add('hidden');
       btnRight.classList.add('hidden');
       btnWrong.classList.add('hidden');
-      roundEnd.classList.remove('hidden');
       statDir.textContent = '';
+    }
 
-      if (errors.length === 0) {
-        roundMsg.textContent = 'Perfect round! Spanish → English and back.';
-        fixBtn.classList.add('hidden');
-      } else {
-        roundMsg.textContent = `Round done. ${correct} correct, ${errors.length} wrong.`;
-        errorList.innerHTML = '<ul>' + errors.map(c =>
-          `<li>${escapeHtml(c.front)} → <strong>${escapeHtml(c.back)}</strong> <span class="fc-tense">(${dirLabel(c.dir)})</span></li>`
-        ).join('') + '</ul>';
-        fixBtn.classList.remove('hidden');
-      }
+    function errorListHtml() {
+      return '<ul>' + errors.map(c =>
+        `<li>${escapeHtml(c.front)} → <strong>${escapeHtml(c.back)}</strong> <span class="fc-tense">(${dirLabel(c.dir)})</span></li>`
+      ).join('') + '</ul>';
+    }
+
+    // Interstitial shown after the Spanish -> English pass.
+    function showInterstitial() {
+      hideCards();
+      roundEnd.classList.remove('hidden');
+      roundMsg.textContent = errors.length === 0
+        ? `Spanish → English complete. Perfect — ${correct} correct.`
+        : `Spanish → English complete. ${correct} correct, ${errors.length} wrong.`;
+      errorList.innerHTML = errors.length ? errorListHtml() : '';
+      roundActions.innerHTML = `
+        <button id="mls-replay-es">Practise Spanish → English again</button>
+        ${errors.length ? '<button id="mls-review-es" class="hidden-on-perfect">Review these errors</button>' : ''}
+        <button id="mls-continue-en" class="btn-right">Continue to English → Spanish ▸</button>`;
+
+      container.querySelector('#mls-replay-es').addEventListener('click', () => startPhase('es2en'));
+      const reviewBtn = container.querySelector('#mls-review-es');
+      if (reviewBtn) reviewBtn.addEventListener('click', () => startReview(errors, 'es2en'));
+      container.querySelector('#mls-continue-en').addEventListener('click', () => startPhase('en2es'));
+    }
+
+    // Final summary shown after the English -> Spanish pass.
+    function showFinal() {
+      hideCards();
+      roundEnd.classList.remove('hidden');
+      roundMsg.textContent = errors.length === 0
+        ? 'Stage complete! Spanish → English and back.'
+        : `English → Spanish done. ${correct} correct, ${errors.length} wrong.`;
+      errorList.innerHTML = errors.length ? errorListHtml() : '';
+      roundActions.innerHTML = `
+        <button id="mls-replay-stage">Play whole stage again</button>
+        ${errors.length ? '<button id="mls-review-en">Review these errors</button>' : ''}`;
+
+      container.querySelector('#mls-replay-stage').addEventListener('click', () => startPhase('es2en'));
+      const reviewBtn = container.querySelector('#mls-review-en');
+      if (reviewBtn) reviewBtn.addEventListener('click', () => startReview(errors, 'en2es'));
     }
 
     function advance(wasRight) {
@@ -167,31 +199,37 @@
         P.touchLast?.(location.href, document.title);
       }
       idx++;
-      if (idx >= deck.length) { endRound(); return; }
+      if (idx >= deck.length) { endOfDeck(); return; }
       showCard();
     }
 
-    function start(cards) {
-      deck = cards;
-      idx = 0;
-      correct = 0;
-      errors = [];
-      roundEnd.classList.add('hidden');
-      errorList.innerHTML = '';
-      card.classList.remove('hidden');
-      btnRight.classList.remove('hidden');
-      btnWrong.classList.remove('hidden');
+    function endOfDeck() {
+      if (phase === 'es2en') showInterstitial();
+      else showFinal();
+    }
+
+    function startPhase(dir) {
+      phase = dir;
+      deck = freshPass(dir);
+      idx = 0; correct = 0; errors = [];
+      showCards();
+      showCard();
+    }
+
+    // Re-run just the missed cards, keeping the phase they belong to.
+    function startReview(missed, dir) {
+      phase = dir;
+      deck = shuffleDeck(missed);
+      idx = 0; correct = 0; errors = [];
+      showCards();
       showCard();
     }
 
     card.addEventListener('click', () => card.classList.toggle('flipped'));
     btnRight.addEventListener('click', () => advance(true));
     btnWrong.addEventListener('click', () => advance(false));
-    replayBtn.addEventListener('click', () => start(freshDeck()));
-    // Review errors keeps the direction each error was made in.
-    fixBtn.addEventListener('click', () => start(shuffleDeck(errors)));
 
-    start(freshDeck());
+    startPhase('es2en');
   }
 
   window.mountMiniLessonStudy = mountMiniLessonStudy;

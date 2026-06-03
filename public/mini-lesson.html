@@ -15,6 +15,8 @@
     .ml-topic { color: var(--weak); font-size: 15px; margin-bottom: 20px; }
     .ml-stage-count { color: var(--weak); font-weight: 400; font-size: 13px; }
     .ml-study-hint { font-size: 13px; color: var(--weak); margin: 0 0 18px; line-height: 1.5; }
+    .mlc-hint { font-size: 13px; color: var(--weak); margin: 0 0 14px; line-height: 1.5; }
+    .mlc-loading { color: var(--weak); font-size: 14px; }
     .ml-source { margin-top: 28px; font-size: 14px; }
     .ml-err { color: var(--wrong); font-size: 14px; }
 
@@ -47,7 +49,9 @@
 </main>
 
 <script src="/html-escape.js"></script>
+<script src="/flashcard.js"></script>
 <script src="/mini-lesson-study.js"></script>
+<script src="/mini-lesson-conjugator.js"></script>
 <script>
   const params = new URLSearchParams(location.search);
   const packId = params.get('pack');
@@ -96,7 +100,7 @@
       <div class="section-label">Mini lesson</div>
       <h1 class="section-title ml-head">${escapeHtml(meta.title || p.title_line || p.id)}</h1>
       <p class="ml-topic">${escapeHtml([meta.topic, meta.order != null ? 'Lesson ' + meta.order : ''].filter(Boolean).join(' · '))}</p>
-      <p class="ml-study-hint">Tap a card to flip. Each stage runs Spanish → English first, then English → Spanish. Use the buttons below to mark yourself.</p>
+      <p class="ml-study-hint">Tap a card to flip and use the buttons to mark yourself. Each stage starts Spanish → English; when you finish you can choose to keep practising that way or move on to English → Spanish.</p>
       <div class="fc-modes" id="ml-stage-picker">${pickerBtns}${allBtn}</div>
       <div id="ml-study"></div>
       <button class="ml-list-toggle" id="ml-list-toggle" aria-expanded="false">Show word list ▸</button>
@@ -114,6 +118,7 @@
     document.title = `${meta.title || p.id} — Mini lesson — Verbmaster`;
 
     const studyEl = document.getElementById('ml-study');
+    const picker = document.getElementById('ml-stage-picker');
 
     function itemsForStage(stageKey) {
       if (stageKey === '__all__') {
@@ -122,18 +127,47 @@
       return stages[stageKey] || [];
     }
 
-    function startStage(stageKey) {
-      mountMiniLessonStudy(studyEl, itemsForStage(stageKey), { packId: p.id, stageKey });
+    // Route a picker selection: the special "__conjugate__" stage opens the
+    // conjugator; everything else is a vocab study stage.
+    function selectStage(stageKey) {
+      if (stageKey === '__conjugate__') {
+        miniLessonConjugator.mount(studyEl, conjugatableVerbs);
+      } else {
+        mountMiniLessonStudy(studyEl, itemsForStage(stageKey), { packId: p.id, stageKey });
+      }
     }
 
-    const picker = document.getElementById('ml-stage-picker');
-    picker.querySelectorAll('.fc-mode-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        picker.querySelectorAll('.fc-mode-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        startStage(btn.dataset.stage);
+    function wirePicker() {
+      picker.querySelectorAll('.fc-mode-btn').forEach(btn => {
+        if (btn.dataset.wired) return;
+        btn.dataset.wired = '1';
+        btn.addEventListener('click', () => {
+          picker.querySelectorAll('.fc-mode-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          selectStage(btn.dataset.stage);
+        });
       });
-    });
+    }
+    wirePicker();
+
+    // Add the optional "Conjugate" stage once we know which stage-1 verbs the DB
+    // can actually conjugate (lesson entries like phrases or preterite forms won't).
+    let conjugatableVerbs = [];
+    const verbItems = stages.stage_1_verbs || [];
+    if (verbItems.length && window.miniLessonConjugator) {
+      miniLessonConjugator.fetchAvailableVerbs(verbItems.map(it => it.es))
+        .then(available => {
+          conjugatableVerbs = available;
+          if (!available.length) return;
+          const btn = document.createElement('button');
+          btn.className = 'fc-mode-btn';
+          btn.dataset.stage = '__conjugate__';
+          btn.innerHTML = `Conjugate <span class="ml-stage-count">${available.length}</span>`;
+          picker.appendChild(btn);
+          wirePicker();
+        })
+        .catch(() => { /* conjugator stays hidden on error */ });
+    }
 
     // Word-list disclosure
     const listToggle = document.getElementById('ml-list-toggle');
@@ -145,7 +179,7 @@
     });
 
     // Kick off with the first stage.
-    if (keys.length) startStage(keys[0]);
+    if (keys.length) selectStage(keys[0]);
     else studyEl.innerHTML = '<p class="ml-err">This pack has no items to study.</p>';
   }
 
