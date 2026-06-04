@@ -17,6 +17,7 @@
     .ml-study-hint { font-size: 13px; color: var(--weak); margin: 0 0 18px; line-height: 1.5; }
     .mlc-hint { font-size: 13px; color: var(--weak); margin: 0 0 14px; line-height: 1.5; }
     .mlc-loading { color: var(--weak); font-size: 14px; }
+    .mls-finish-link { display: inline-block; margin-top: 6px; font-size: 14px; }
     .ml-source { margin-top: 28px; font-size: 14px; }
     .ml-err { color: var(--wrong); font-size: 14px; }
 
@@ -120,6 +121,14 @@
     const studyEl = document.getElementById('ml-study');
     const picker = document.getElementById('ml-stage-picker');
 
+    // Human-readable label for a picker button (without the count badge).
+    const STAGE_NEXT_LABELS = {
+      stage_1_verbs: 'Verbs',
+      stage_2_phrases: 'Phrases',
+      stage_3_sentences: 'Sentences',
+      __conjugate__: 'Conjugate the verbs',
+    };
+
     function itemsForStage(stageKey) {
       if (stageKey === '__all__') {
         return keys.flatMap(k => stages[k] || []);
@@ -127,13 +136,41 @@
       return stages[stageKey] || [];
     }
 
-    // Route a picker selection: the special "__conjugate__" stage opens the
-    // conjugator; everything else is a vocab study stage.
+    // The linear study order = the picker buttons in order, minus the "All" deck.
+    // (The "Conjugate" button is appended asynchronously, so read it live.)
+    function linearStageKeys() {
+      return [...picker.querySelectorAll('.fc-mode-btn')]
+        .map(b => b.dataset.stage)
+        .filter(s => s && s !== '__all__');
+    }
+
+    // What the study widget should offer after finishing English -> Spanish:
+    // the next linear stage, or a terminal "finished" note when there's none.
+    function nextStepFor(stageKey) {
+      const order = linearStageKeys();
+      const i = order.indexOf(stageKey);
+      const nextKey = i >= 0 ? order[i + 1] : undefined;
+      if (nextKey) {
+        return { label: STAGE_NEXT_LABELS[nextKey] || nextKey, onAdvance: () => selectStage(nextKey) };
+      }
+      return { finished: true, backHref: '/mini-lessons.html', backLabel: '← All mini lessons' };
+    }
+
+    function setActiveButton(stageKey) {
+      picker.querySelectorAll('.fc-mode-btn').forEach(b =>
+        b.classList.toggle('active', b.dataset.stage === stageKey));
+    }
+
+    // Route a stage selection: the special "__conjugate__" stage opens the
+    // conjugator; everything else is a vocab study stage (with onward navigation).
     function selectStage(stageKey) {
+      setActiveButton(stageKey);
       if (stageKey === '__conjugate__') {
         miniLessonConjugator.mount(studyEl, conjugatableVerbs);
-      } else {
+      } else if (stageKey === '__all__') {
         mountMiniLessonStudy(studyEl, itemsForStage(stageKey), { packId: p.id, stageKey });
+      } else {
+        mountMiniLessonStudy(studyEl, itemsForStage(stageKey), { packId: p.id, stageKey, nextStep: () => nextStepFor(stageKey) });
       }
     }
 
@@ -141,11 +178,7 @@
       picker.querySelectorAll('.fc-mode-btn').forEach(btn => {
         if (btn.dataset.wired) return;
         btn.dataset.wired = '1';
-        btn.addEventListener('click', () => {
-          picker.querySelectorAll('.fc-mode-btn').forEach(b => b.classList.remove('active'));
-          btn.classList.add('active');
-          selectStage(btn.dataset.stage);
-        });
+        btn.addEventListener('click', () => selectStage(btn.dataset.stage));
       });
     }
     wirePicker();

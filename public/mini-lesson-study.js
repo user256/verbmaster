@@ -47,6 +47,14 @@
   function mountMiniLessonStudy(container, items, opts) {
     const packId = opts.packId || 'pack';
     const stageKey = opts.stageKey || 'stage';
+    // Optional forward navigation shown when the English -> Spanish pass finishes.
+    // May be a descriptor or a function returning one (resolved lazily at the end,
+    // so an asynchronously-added next stage like "Conjugate" is picked up):
+    //   { label, onAdvance } — primary "next" button leading to the next stage
+    //   { finished: true, backHref?, backLabel? } — terminal "you've finished" note
+    //   null/omitted — plain stage-complete (e.g. the "All" deck)
+    const resolveNextStep = () =>
+      (typeof opts.nextStep === 'function' ? opts.nextStep() : opts.nextStep) || null;
     const usable = items.filter(it => it.es && it.en);
 
     if (!usable.length) {
@@ -172,18 +180,42 @@
       container.querySelector('#mls-continue-en').addEventListener('click', () => startPhase('en2es'));
     }
 
-    // Final summary shown after the English -> Spanish pass.
+    // Final summary shown after the English -> Spanish pass. When a nextStep is
+    // provided it leads with a "well done, move on" primary button.
     function showFinal() {
       hideCards();
       roundEnd.classList.remove('hidden');
-      roundMsg.textContent = errors.length === 0
-        ? 'Stage complete! Spanish → English and back.'
-        : `English → Spanish done. ${correct} correct, ${errors.length} wrong.`;
+      const clean = errors.length === 0;
+      const nextStep = resolveNextStep();
+      if (nextStep) {
+        roundMsg.textContent = clean
+          ? `Well done! Stage complete — ${correct} correct.`
+          : `Stage done. ${correct} correct, ${errors.length} wrong.`;
+      } else {
+        roundMsg.textContent = clean
+          ? 'Stage complete! Spanish → English and back.'
+          : `English → Spanish done. ${correct} correct, ${errors.length} wrong.`;
+      }
       errorList.innerHTML = errors.length ? errorListHtml() : '';
+      const finished = nextStep && nextStep.finished;
+      if (finished) {
+        roundMsg.textContent = clean
+          ? "You've finished this lesson! 🎉"
+          : `You've finished this lesson! 🎉 (${correct} correct, ${errors.length} wrong on the last pass.)`;
+      }
+      const advanceBtn = (nextStep && !finished)
+        ? `<button id="mls-next" class="btn-right">Well done — next: ${escapeHtml(nextStep.label)} ▸</button>` : '';
+      const finishLink = (finished && nextStep.backHref)
+        ? `<a class="mls-finish-link" href="${escapeHtml(nextStep.backHref)}">${escapeHtml(nextStep.backLabel || '← All mini lessons')}</a>` : '';
       roundActions.innerHTML = `
+        ${advanceBtn}
         <button id="mls-replay-stage">Play whole stage again</button>
-        ${errors.length ? '<button id="mls-review-en">Review these errors</button>' : ''}`;
+        ${errors.length ? '<button id="mls-review-en">Review these errors</button>' : ''}
+        ${finishLink}`;
 
+      if (advanceBtn) {
+        container.querySelector('#mls-next').addEventListener('click', () => nextStep.onAdvance());
+      }
       container.querySelector('#mls-replay-stage').addEventListener('click', () => startPhase('es2en'));
       const reviewBtn = container.querySelector('#mls-review-en');
       if (reviewBtn) reviewBtn.addEventListener('click', () => startReview(errors, 'en2es'));
